@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2a3590">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="코멘트기록">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>현장 코멘트 기록</title>
+<style>
+/* 레이아웃: 태블릿 가로 2단(기록 | 분류 초안), 760px 이하는 1단. 색은 모두 토큰으로만 쓴다. 외부 글꼴은 쓰지 않는다(오프라인 동작). */
+:root{--bg:#f3f4f8;--card:#fff;--ink:#1c2233;--mut:#667085;--line:#dde0ea;--pri:#2a3590;--bt:#fff;--soft:#e8ebf8;--hd:#eff1f8;--ok:#17703d;--okb:#dff3e6;--wn:#7a5c00;--wnb:#fbe9a6;--bd:#b3261e;--bdb:#fbe3e0;--code:#f6f7fb;color-scheme:light}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12141c;--card:#1b1e29;--ink:#e8eaf2;--mut:#9aa2b8;--line:#2e3344;--pri:#97a3ff;--bt:#10131f;--soft:#262b45;--hd:#232737;--ok:#6fd49a;--okb:#16352a;--wn:#f0d36b;--wnb:#3b3210;--bd:#ff9a90;--bdb:#3d1f1d;--code:#161924;color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{background:var(--bg);color:var(--ink);font:14px/1.5 "Noto Sans KR","Noto Sans CJK KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;padding:env(safe-area-inset-top,0) env(safe-area-inset-right,0) env(safe-area-inset-bottom,0) env(safe-area-inset-left,0);-webkit-text-size-adjust:100%}
+button,select,input,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
+[hidden]{display:none!important}
+.top{display:flex;align-items:center;gap:10px 14px;flex-wrap:wrap;padding:8px 16px;background:var(--card);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px}.brand b{font-size:17px;color:var(--pri)}
+.tabs{margin-left:auto}
+.seg{display:inline-flex;border:1px solid var(--pri);border-radius:8px;overflow:hidden}
+.seg button{border:0;background:var(--card);color:var(--pri);padding:0 16px;min-height:40px;cursor:pointer;font-weight:500;white-space:nowrap}
+.seg button.on{background:var(--pri);color:var(--bt)}
+.grid .seg{display:flex;width:100%}.grid .seg button{flex:1;min-width:0;padding:0 8px}
+main{max-width:1180px;margin:0 auto;padding:12px 16px 56px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:12px}
+.card h2{margin:0 0 8px;font-size:15px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.card h2 .n{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--soft);color:var(--pri);font-size:12px}
+.mut{color:var(--mut);font-size:12px}
+.btn{border:1px solid var(--pri);background:var(--card);color:var(--pri);border-radius:8px;padding:0 14px;min-height:40px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap}
+.btn.p{background:var(--pri);color:var(--bt)}
+.btn.sm{font-size:13px}
+.btn.rec{border-color:var(--bd);color:var(--bd)}
+.btn.rec.live{background:var(--bd);color:var(--bt)}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.work{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:12px;align-items:start}
+.work>.card{margin-bottom:0}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.stack{display:grid;gap:10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.note{font-size:12px;color:var(--mut);margin:6px 0 0}
+label.f{display:block;font-size:12px;color:var(--mut)}
+label.f>.in{margin-top:3px}
+input.in,select.in{width:100%;min-height:40px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--card);font-size:14px}
+textarea.txt{width:100%;min-height:92px;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--card);resize:vertical;font-size:14px}
+.thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px;margin-top:8px}
+.th{position:relative;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--hd)}
+.th img{display:block;width:100%;height:78px;object-fit:cover;cursor:zoom-in}
+.th .m{font-size:11.5px;padding:2px 6px;color:var(--mut);display:flex;justify-content:space-between;gap:4px}
+.th .x{position:absolute;top:2px;right:2px;width:30px;height:30px;border-radius:50%;border:0;background:rgba(0,0,0,.55);color:#fff;cursor:pointer;line-height:1;font-size:16px}
+.pill{display:inline-block;padding:1px 9px;border-radius:99px;font-size:12px;font-weight:700;background:var(--hd);color:var(--mut);white-space:nowrap}
+.pill.ok{background:var(--okb);color:var(--ok)}.pill.wn{background:var(--wnb);color:var(--wn)}.pill.bd{background:var(--bdb);color:var(--bd)}.pill.nv{background:var(--soft);color:var(--pri)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--card);border-radius:99px;min-height:40px;padding:0 14px;cursor:pointer;font-size:13px}
+.chip.on{background:var(--pri);color:var(--bt);border-color:var(--pri)}
+.fld{border:1px solid var(--line);border-radius:8px;padding:10px;display:grid;gap:6px}
+.fld.lo,.it.lo{border-color:var(--wn)}
+.fld .hd{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.fld .hd b{font-size:13px}
+.ev{font-size:12px;color:var(--mut)}
+.bar{height:5px;border-radius:3px;background:var(--hd);overflow:hidden;width:70px;display:inline-block;vertical-align:middle}
+.bar i{display:block;height:100%;background:var(--ok)}.bar.lo i{background:var(--wn)}
+.items{display:grid;gap:8px}
+.it{border:1px solid var(--line);border-radius:8px;padding:10px;display:grid;gap:6px}
+.it .r{display:grid;grid-template-columns:minmax(0,1fr) 130px;gap:8px;align-items:start}
+.foot{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;justify-content:flex-end}
+.foot .st{margin-right:auto;font-size:13px}
+.empty{color:var(--mut);padding:18px;text-align:center;border:1px dashed var(--line);border-radius:8px}
+.live-txt{min-height:20px;color:var(--mut);font-size:13px;font-style:italic}
+.selbox{display:inline-grid;place-items:center;min-width:40px;min-height:40px;margin:-8px 0 -8px -8px;cursor:pointer}.selbox input{width:22px;height:22px;accent-color:var(--pri)}
+.recs{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px}
+.rc{border:1px solid var(--line);border-radius:10px;padding:12px;display:grid;gap:6px;background:var(--card)}
+.rc .h{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.rc .h b{font-size:13px}
+.rc .t{white-space:pre-wrap;word-break:break-word}
+.rc .ph{display:flex;gap:6px;flex-wrap:wrap}.rc .ph img{width:56px;height:42px;object-fit:cover;border-radius:6px;cursor:zoom-in;border:1px solid var(--line)}
+.kvs{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;align-items:center}
+.toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:99px;font-size:13px;z-index:200;max-width:92vw}
+/* 권한 게이트 */
+.gate{min-height:100vh;display:grid;place-items:center;padding:20px}
+.gate .card{max-width:560px;width:100%;margin:0}
+.gate h1{font-size:20px;margin:0 0 6px}
+.perm{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.perm b{flex:1}
+.how{background:var(--hd);border-radius:8px;padding:10px 12px;font-size:13px}
+.how ol{margin:4px 0 0;padding-left:20px}
+/* 카메라 */
+.cam{position:fixed;inset:0;background:#000;z-index:100;display:grid;grid-template-columns:minmax(0,1fr) auto;color:#fff}
+.cam video{width:100%;height:100%;object-fit:contain;background:#000;min-height:0}
+.cam .ctl{display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;padding:14px 18px;min-width:120px}
+.cam .ctl .btn{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.4);color:#fff;min-width:96px}
+.shutter{width:76px;height:76px;border-radius:50%;border:5px solid #fff;background:rgba(255,255,255,.25);cursor:pointer;padding:0}
+.shutter:active{background:#fff}
+.cam .cnt{font-size:13px}
+.cam .flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+.cam .flash.go{animation:fl .18s ease-out}
+@keyframes fl{0%{opacity:.8}100%{opacity:0}}
+.cam .strip{position:absolute;left:10px;bottom:10px;display:flex;gap:6px;max-width:60%}
+.cam .strip img{width:54px;height:40px;object-fit:cover;border-radius:6px;border:2px solid #fff}
+@media(orientation:portrait){.cam{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) auto}.cam .ctl{flex-direction:row;justify-content:space-around;padding:12px}.cam .strip{bottom:100px}}
+.lb{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:150;display:grid;place-items:center;padding:12px}
+.lb img{max-width:100%;max-height:calc(100vh - 80px);object-fit:contain;border-radius:6px}
+.lb .btn{position:absolute;top:calc(10px + env(safe-area-inset-top,0px));right:12px;background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.4)}
+@media(max-width:760px){.work{grid-template-columns:1fr}.tabs{margin-left:0;width:100%}.seg{width:100%}.seg button{flex:1;padding:0 6px}.it .r{grid-template-columns:1fr}.recs{grid-template-columns:1fr}}
+@media(max-height:430px){.top{padding:4px 12px}.card{padding:10px}main{padding-top:8px}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<!-- 권한 게이트: 카메라와 마이크가 모두 허용되기 전에는 앱을 열지 않는다 -->
+<section class="gate" id="gate" hidden></section>
+
+<div id="app" hidden>
+<header class="top">
+  <div class="brand"><b>현장 코멘트 기록</b><span class="pill nv" id="verPill"></span></div>
+  <button class="btn sm" id="installBtn" hidden>앱 설치</button>
+  <nav class="seg tabs" id="tabs" role="tablist" aria-label="화면">
+    <button role="tab" data-act="tab" data-tab="rec" class="on" aria-selected="true">기록</button>
+    <button role="tab" data-act="tab" data-tab="list" aria-selected="false">내역 <span id="cnt"></span></button>
+    <button role="tab" data-act="tab" data-tab="set" aria-selected="false">설정</button>
+  </nav>
+</header>
+
+<main>
+<section id="tab-rec">
+  <div class="card" id="ctx"></div>
+  <div class="work">
+    <div class="card" id="left">
+      <h2><span class="n">1</span>사진</h2>
+      <div class="row">
+        <button class="btn p" data-act="openCam">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>카메라로 찍기</button>
+      </div>
+      <div class="thumbs" id="thumbs"></div>
+
+      <h2 style="margin-top:14px"><span class="n">2</span>말하거나 입력</h2>
+      <div class="row" style="margin-bottom:8px">
+        <button class="btn rec" id="micBtn" data-act="mic">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span id="micLbl">말하기</span></button>
+        <span class="mut" id="voiceMsg"></span>
+      </div>
+      <textarea class="txt" id="text" aria-label="코멘트 내용" placeholder="말한 내용이 여기에 받아써집니다. 직접 고치거나 입력해도 됩니다."></textarea>
+      <div class="live-txt" id="interim" aria-live="polite"></div>
+      <div class="foot" style="justify-content:flex-start">
+        <button class="btn p" id="clsBtn" data-act="classify">자동 분류</button>
+        <button class="btn" data-act="clear">비우기</button>
+      </div>
+    </div>
+    <div class="card" id="right"></div>
+  </div>
+</section>
+
+<section id="tab-list" hidden></section>
+<section id="tab-set" hidden></section>
+</main>
+</div>
+
+<div class="cam" id="cam" hidden>
+  <video id="camVideo" autoplay playsinline muted></video>
+  <div class="flash" id="camFlash"></div>
+  <div class="strip" id="camStrip"></div>
+  <div class="ctl">
+    <span class="cnt" id="camCnt">0장</span>
+    <button class="shutter" data-act="shot" aria-label="사진 찍기"></button>
+    <button class="btn" data-act="flip">앞·뒤 전환</button>
+    <button class="btn" data-act="closeCam">완료</button>
+  </div>
+</div>
+<div class="lb" id="lb" hidden><button class="btn" data-act="closeLb">닫기</button><img id="lbImg" alt="확대한 현장 사진"></div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+"use strict";
+const APP_VER = "1.2.1";
+
+/* ===== 기준 데이터: SEJIN 기본 ITP 마스터의 검사종류 I-01~I-62 (ERP 코드는 쓰지 않는다) ===== */
+const KINDS_RAW = `I-01|STRUCTURE|BLOCK INSPECTION|ASSEMBLY BLOCK
+I-02|STRUCTURE|BLOCK INSPECTION|GLAND ASSEMBLY BLOCK
+I-03|STRUCTURE|BLOCK INSPECTION|DOME FABRICATION INSPECTION (with Air Test)
+I-04|STRUCTURE|BLOCK with OUTFITTING INSPECTION|RADAR MAST
+I-05|STRUCTURE|BLOCK with OUTFITTING INSPECTION|FUNNNEL
+I-06|STRUCTURE|FIT-UP INSPECTION|FIT-UP INSPECTION
+I-07|STRUCTURE|PE INSPECTION|PE INSPECTION
+I-08|STRUCTURE|Production Weld Test|PUNCHING INSPECTION
+I-09|STRUCTURE|Production Weld Test|MECHANICAL TEST
+I-10|STRUCTURE|Tightness test|AIR TEST
+I-11|STRUCTURE|Tightness test|VACCUME TEST
+I-12|STRUCTURE|Tightness test|TANK HYDRO TEST
+I-13|STRUCTURE|CLEANING INSPECTION|TANK CLEANING
+I-62|STRUCTURE|PWHT|PWHT (SUMP 류)
+I-14|OUTFITTING|CHALK TEST|SIDE SCUTTLE, WINDOW (OPEN TYPE Only)
+I-15|OUTFITTING|CHALK TEST|LOURVER VENT
+I-16|OUTFITTING|HOSE TEST|STEEL DOOR (WATER TIGHT DOOR)
+I-17|OUTFITTING|HOSE TEST|SIDE SCUTTLE, WINDOW
+I-18|OUTFITTING|VISUAL INSPECTION|OUTFITTING INSPECTION
+I-19|OUTFITTING|VISUAL INSPECTION|EXPENSION JOINT INSTALLATION
+I-20|OUTFITTING|VISUAL INSPECTION|INSTALLATION / VISUAL INSPECTION
+I-21|OUTFITTING|VISUAL INSPECTION|PRE-OUTFITTING INSPECTION
+I-22|OUTFITTING|VISUAL INSPECTION|PASSIVATION INSPECTION
+I-23|OUTFITTING|CLEANING INSPECTION|CLEANING INSPECTION
+I-24|PIPING|HYDRO TEST|FIRE&WASH DECK LINE
+I-25|PIPING|HYDRO TEST|SERVICE COMPRESSED AIR LINE
+I-26|PIPING|HYDRO TEST|AIR HORN LINE
+I-27|PIPING|HYDRO TEST|FRESH WATER LINE
+I-28|PIPING|HYDRO TEST|SAMPLING/SPILL TANK DRAIN LINE
+I-29|PIPING|HYDRO TEST|INCIN. W.O LINE
+I-30|PIPING|HYDRO TEST|STEAM SUPPLY ENCLOSED PART
+I-31|PIPING|HYDRO TEST|*
+I-32|PIPING|LEAK TEST|ANSUL LINE
+I-33|PIPING|LEAK TEST|CO2 LINE
+I-34|PIPING|LEAK TEST|HIGH EXPASION FOAM SYSTEM
+I-35|PIPING|LEAK TEST|WATER BASED LOCAL FIRE FIGHTING SYSTEM
+I-36|PIPING|LEAK TEST|N2 GAS PURGE LINE
+I-37|PIPING|LEAK TEST|*
+I-38|PIPING|FLOODING TEST|SOIL LINE
+I-39|PIPING|AIR BLOWING INSPECTION|SCUPPER AIR BLOWING
+I-40|PIPING|FIT-UP INSPECTION|PIPE / NOZZLE FIT-UP INSPECTION
+I-41|ELECTRIC|CABLE INSTALLATION INSPECTION|CABLE INSTALLATION INSPECTION
+I-42|INSULATION|INSULATION INSPECTION|THERMAL
+I-43|INSULATION|INSULATION INSPECTION|A60
+I-44|INSULATION|INSULATION INSPECTION|TANK
+I-45|INSULATION|INSULATION INSPECTION|PRE-SURFACE
+I-46|FIRE PROTECTION|DRAFT STOP INSTAL. INSPECTION|DRAFT STOP INSTALLATION INSPECTION
+I-47|PAINT|SURFACE PREPARATION INSPECTION|EXTERNAL
+I-48|PAINT|SURFACE PREPARATION INSPECTION|INTERNAL
+I-49|PAINT|EACH INTER COATING INSPECTION|EXTERNAL (1ST)
+I-50|PAINT|EACH INTER COATING INSPECTION|INTERNAL (1ST)
+I-51|PAINT|EACH INTER COATING INSPECTION|EXTERNAL (2ND)
+I-52|PAINT|EACH INTER COATING INSPECTION|INTERNAL (2ND)
+I-53|PAINT|EACH INTER COATING INSPECTION|EXTERNAL (3RD)
+I-54|PAINT|EACH INTER COATING INSPECTION|INTERNAL (3RD)
+I-55|PAINT|FINAL INSPECTION|EXTERNAL
+I-56|PAINT|FINAL INSPECTION|INTERNAL
+I-57|NDE|MT|
+I-58|NDE|UT|
+I-59|NDE|RT|
+I-60|NDE|PT|
+I-61|NDE|PAUT|`;
+const KINDS = KINDS_RAW.split("\n").map(l => { const a = l.split("|"); return { id: a[0], group: a[1], major: a[2], minor: a[3] === "*" ? "(세부 미정)" : a[3] || "" }; });
+const KIND = Object.fromEntries(KINDS.map(k => [k.id, k]));
+const GROUPS = [...new Set(KINDS.map(k => k.group))];
+// 화면에는 검사종류 '중'(major)만 보여 준다. 내부 값(I-번호, 소)은 그대로 유지한다.
+const kindLabel = id => { const k = KIND[id]; return k ? k.major : id; };
+const kindKey = id => { const k = KIND[id]; return k ? k.group + "|" + k.major : ""; };
+const KIND_REP = (() => { const m = {}; KINDS.slice().sort((a, b) => a.id.localeCompare(b.id)).forEach(k => { const key = k.group + "|" + k.major; if (!m[key]) m[key] = k; }); return m; })();
+
+const TYPES = ["용접", "사상", "곡직", "취부", "DAMAGE", "미작업", "LEAK", "비파괴", "정도", "안전(족장)", "청소", "기타"];
+const PARTNERS = ["선조", "선탑", "선의", "선기", "선전", "선보", "선목", "선도"];
+const PARTNER_FULL = { 선조: "선실 선각 조립", 선탑: "선실 선각 탑재(P.E)", 선의: "선실 의장(D/H)", 선기: "기장(E/C)", 선전: "전장", 선보: "보온", 선목: "목의장", 선도: "도장" };
+const SOURCES = [["S", "SQM"], ["O", "선주"], ["C", "선급"]];
+const MIN_CONF = 0.8; // 이 값 미만은 SQM담당이 확인해야 등록할 수 있다
+// 구분 규칙: 의장·전장·기장은 DECK 단위, 선각·보온·도장은 BLOCK 단위. 그룹→단위는 시연용 기본값
+const DECK_GROUPS = ["OUTFITTING", "PIPING", "ELECTRIC"];
+const GROUP_PARTNER = { STRUCTURE: "선조", OUTFITTING: "선의", PIPING: "선의", ELECTRIC: "선전", INSULATION: "선보", "FIRE PROTECTION": "선보", PAINT: "선도", NDE: "선조" };
+const GROUP_TRADE = { STRUCTURE: "선실 선각 조립", OUTFITTING: "선실 의장", PIPING: "선실 의장", ELECTRIC: "전장", INSULATION: "선실 보온", "FIRE PROTECTION": "선실 보온", PAINT: "선실 도장", NDE: "선실 선각 조립" };
+
+const BLOCK_HINTS = ["H11P", "H11S", "H12A", "H21A", "H22A", "H32A", "H41A", "H42P", "H42S", "H91A"];
+const DECK_HINTS = ["UPP.", "A", "B", "C", "NAV.", "COMP.", "F/N"];
+
+/* ===== 분류 규칙(키워드 기반, 이 기기 안에서 실행. LLM이 아님) ===== */
+const TYPE_RULES = [
+  ["용접", /언더컷|undercut|비드|bead|오버랩|overlap|기공|porosity|용접|weld|크랙|crack/i],
+  ["사상", /스패터|spatter|그라인딩|grind|사상|버\b|burr|날카/i],
+  ["곡직", /변형|곡직|휨|뒤틀|distortion|deform|warp/i],
+  ["취부", /취부|갭|\bgap\b|fit-?up|오정렬|misalign|어긋|단차|가용접|tack/i],
+  ["DAMAGE", /손상|찍힘|파손|긁힘|damage|dent|scratch/i],
+  ["미작업", /미작업|미시공|누락|미설치|미완|not (done|installed)|missing/i],
+  ["LEAK", /누설|누수|새는|leak/i],
+  ["비파괴", /비파괴|\b(NDE|NDT|RT|UT|MT|PT|PAUT)\b/i],
+  ["정도", /정도 ?(검사|불량|초과)|치수|공차|오차|dimension|tolerance/i],
+  ["안전(족장)", /족장|안전|추락|발판|난간|scaffold|safety/i],
+  ["청소", /청소|이물|잔재|debris|clean/i]
+];
+const PARTNER_SPECIFIC = [
+  ["선탑", /탑재|P\.?E\b|erection/i, "탑재·P.E 키워드"], ["선기", /기장|엔진|E\/C|casing/i, "기장·E/C 키워드"],
+  ["선전", /케이블|전장|cable|electric/i, "케이블·전장 키워드"], ["선보", /보온|단열|insulat/i, "보온 키워드"],
+  ["선목", /목의장|가구|wood/i, "목의장 키워드"], ["선도", /도장|도막|페인트|paint|coating|recoat/i, "도장·도막 키워드"],
+  ["선의", /배관|플랜지|밸브|볼트|의장|flange|pipe|valve|outfitting/i, "배관·플랜지 키워드"]
+];
+const matchTypes = s => TYPE_RULES.map(r => { const m = s.match(r[1]); return m ? { type: r[0], word: m[0] } : null; }).filter(Boolean);
+function splitItems(text) {
+  const frags = text.replace(/\r/g, "").split(/\n|[.;。]\s*|,\s+/).map(s => s.trim()).filter(Boolean);
+  const out = [];
+  frags.forEach(f => { if (!out.length || matchTypes(f).length) out.push(f); else out[out.length - 1] += ", " + f; });
+  return out;
+}
+function classifyLocal(req) {
+  const text = req.text, ctx = req.context;
+  const items = splitItems(text).map(t => {
+    const ms = matchTypes(t);
+    if (!ms.length) return { text: t, type: { value: "기타", confidence: 0.55, evidence: [] } };
+    const types = [...new Set(ms.map(m => m.type))];
+    return { text: t, type: { value: ms[0].type, confidence: types.length > 1 ? 0.86 : 0.92, evidence: ms.map(m => m.word).slice(0, 3), note: types.length > 1 ? "복수 유형 후보: " + types.join(", ") : undefined } };
+  });
+  let ap;
+  const ex = text.match(/선조|선탑|선의|선기|선전|선보|선목|선도/);
+  if (ex) ap = { value: ex[0], confidence: 0.97, evidence: [ex[0]], basis: "explicit" };
+  else {
+    const sp = PARTNER_SPECIFIC.find(r => r[1].test(text));
+    if (sp) ap = { value: sp[0], confidence: 0.88, evidence: [sp[2]], basis: "keyword" };
+    else if (/용접|취부|weld|fit-?up|블록|block/i.test(text)) ap = { value: "선조", confidence: 0.76, evidence: ["용접·취부 키워드(조립과 탑재 구분 불가)"], basis: "generic" };
+    else ap = { value: GROUP_PARTNER[ctx.kind_group] || "선조", confidence: 0.72, evidence: ["검사 그룹 기본값"], basis: "context" };
+  }
+  const loc = [...new Set((text.match(/상부|하부|좌측|우측|중앙|끝단|모서리|코너|용접선|플랜지|P측|S측|PORT|STBD|CENTER|upper|lower|top|bottom|seam|joint/gi) || []).map(x => x))].slice(0, 4).join(" ");
+  const pn = req.photos.filter(p => p.sample_idx != null).map(p => ({ photo_id: p.id, note: SAMPLE_PHOTO_NOTE[p.sample_idx].note, confidence: SAMPLE_PHOTO_NOTE[p.sample_idx].c }));
+  return {
+    requestId: req.requestId, model: "sample-rules", model_version: "demo-0", latency_ms: 0,
+    result: { items, action_party: ap, kind_ids: [{ value: ctx.kind_id, confidence: 1, basis: "context" }], location_note: { value: loc, confidence: loc ? 0.7 : 0 }, photo_notes: pn },
+    draft_state: "draft"
+  };
+}
+function classify(text, ctx) {
+  const res = classifyLocal({ requestId: "local", text, context: ctx, photos: [] });
+  res.model = "rules"; res.model_version = "pwa-" + APP_VER;
+  return res;
+}
+
+/* ===== 공통 도구 ===== */
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const pad = n => String(n).padStart(2, "0");
+const nowIso = () => { const d = new Date(); return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()); };
+const mmdd = iso => iso.slice(5, 7) + "/" + iso.slice(8, 10);
+const kb = n => n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
+let toastT;
+function toast(m) { const t = $("#toast"); t.textContent = m; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 2800); }
+function lsGet(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
+function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
+
+const S = {
+  tab: "rec", photos: [], draft: null, rawVoice: "", voiceConf: [], records: [], listening: false, installEv: null, pid: 0,
+  perm: { cam: "prompt", mic: "prompt" }, entered: false, sel: new Set(), pkgs: [], pkgBusy: false,
+  ctx: Object.assign({ ship: "M8470", locType: "BLOCK", loc: "", kind: "", inspNo: "", source: "S", author: "" }, lsGet("ctx", {}))
+};
+
+/* ===== 저장소(IndexedDB): 기록은 records, 사진 원본은 photos ===== */
+const DB = {
+  db: null,
+  open() {
+    return new Promise((res, rej) => {
+      const r = indexedDB.open("field-comment", 1);
+      r.onupgradeneeded = () => { const d = r.result; d.createObjectStore("records", { keyPath: "id" }); d.createObjectStore("photos", { keyPath: "id" }); };
+      r.onsuccess = () => { DB.db = r.result; res(); };
+      r.onerror = () => rej(r.error);
+    });
+  },
+  run(store, mode, fn) {
+    return new Promise((res, rej) => {
+      const tx = DB.db.transaction(store, mode), st = tx.objectStore(store), rq = fn(st);
+      tx.oncomplete = () => res(rq ? rq.result : undefined); tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error);
+    });
+  },
+  put(store, obj) { return DB.run(store, "readwrite", s => s.put(obj)); },
+  get(store, key) { return DB.run(store, "readonly", s => s.get(key)); },
+  all(store) { return DB.run(store, "readonly", s => s.getAll()); },
+  del(store, key) { return DB.run(store, "readwrite", s => s.delete(key)); },
+  clear(store) { return DB.run(store, "readwrite", s => s.clear()); }
+};
+
+/* ===== 권한 게이트 ===== */
+const PERM_TXT = { granted: ["허용됨", "ok"], prompt: ["아직 허용 안 됨", "wn"], denied: ["차단됨", "bd"], nodevice: ["장치를 찾지 못함", "bd"], error: ["확인 실패", "bd"], insecure: ["보안 연결 아님", "bd"] };
+const secureOk = () => window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
+async function queryPerm(name) {
+  try { const st = await navigator.permissions.query({ name }); return st; } catch (e) { return null; }
+}
+async function refreshPerms() {
+  if (!secureOk()) { S.perm.cam = S.perm.mic = "insecure"; return; }
+  for (const [k, n] of [["cam", "camera"], ["mic", "microphone"]]) {
+    const st = await queryPerm(n);
+    if (st) {
+      S.perm[k] = st.state;
+      if (!st._hooked) { st._hooked = true; st.onchange = () => { refreshPerms().then(gateCheck); }; }
+    }
+  }
+}
+async function requestPerm(kind) {
+  try {
+    const s = await navigator.mediaDevices.getUserMedia(kind === "cam" ? { video: true } : { audio: true });
+    s.getTracks().forEach(t => t.stop());
+    S.perm[kind] = "granted";
+  } catch (e) {
+    S.perm[kind] = e.name === "NotFoundError" || e.name === "OverconstrainedError" ? "nodevice" : e.name === "NotAllowedError" || e.name === "SecurityError" ? "denied" : "error";
+  }
+}
+const permsOk = () => S.perm.cam === "granted" && S.perm.mic === "granted";
+function renderGate() {
+  const g = $("#gate"), insecure = S.perm.cam === "insecure";
+  const row = (label, k) => '<div class="perm"><b>' + label + '</b><span class="pill ' + PERM_TXT[S.perm[k]][1] + '">' + PERM_TXT[S.perm[k]][0] + '</span></div>';
+  const blocked = S.perm.cam === "denied" || S.perm.mic === "denied";
+  g.innerHTML = '<div class="card stack"><div><h1>카메라와 마이크 권한이 필요합니다</h1>' +
+    '<p class="mut" style="margin:0">현장 사진 촬영과 음성 입력에 씁니다. 두 권한이 모두 허용되어야 앱을 사용할 수 있습니다. 사진과 기록은 이 기기 안에만 저장됩니다. 음성 받아쓰기는 브라우저 기능을 쓰며, 크롬은 음성을 인식하려고 구글 서버로 보냅니다.</p></div>' +
+    row("카메라", "cam") + row("마이크", "mic") +
+    (insecure ? '<div class="how"><b>이 주소는 보안 연결(HTTPS)이 아닙니다.</b><br>카메라와 마이크는 https:// 주소(또는 같은 기기의 localhost)에서만 쓸 수 있습니다. 앱을 HTTPS로 올린 주소로 다시 여세요.</div>' :
+      blocked ? '<div class="how"><b>차단되어 있어 이 화면에서 다시 물어볼 수 없습니다.</b> 브라우저 설정에서 직접 허용하세요.<ol><li>크롬: 주소창 왼쪽 아이콘(자물쇠) → 권한 → 카메라·마이크를 \'허용\'</li><li>설치한 앱: 앱 아이콘을 길게 눌러 앱 정보 → 권한 → 카메라·마이크 \'허용\'</li><li>허용한 뒤 아래 [다시 확인]을 누르세요.</li></ol></div>' : "") +
+    '<div class="row">' + (insecure ? "" : '<button class="btn p" data-act="askPerm"' + (blocked && S.perm.cam !== "prompt" && S.perm.mic !== "prompt" ? " disabled" : "") + '>권한 허용하기</button>') +
+    '<button class="btn" data-act="recheck">다시 확인</button></div></div>';
+}
+async function gateCheck() {
+  if (permsOk()) { if (!S.entered) await enterApp(); else { $("#gate").hidden = true; $("#app").hidden = false; } return; }
+  closeCam(); stopVoice();
+  $("#app").hidden = true; $("#gate").hidden = false; renderGate();
+}
+async function askPerm() {
+  if (S.perm.cam !== "granted") await requestPerm("cam");
+  if (S.perm.mic !== "granted") await requestPerm("mic");
+  await refreshPerms(); await gateCheck();
+}
+
+/* ===== 카메라(앱 안에서 직접 촬영) ===== */
+let camStream = null, camFacing = "environment";
+async function startStream() {
+  stopStream();
+  camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: camFacing }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+  const v = $("#camVideo"); v.srcObject = camStream; try { await v.play(); } catch (e) { }
+}
+function stopStream() { if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; } const v = $("#camVideo"); if (v) v.srcObject = null; }
+async function openCam() {
+  $("#cam").hidden = false; renderCamStrip();
+  try { await startStream(); } catch (e) { closeCam(); toast("카메라를 열지 못했습니다. 권한을 확인하세요."); refreshPerms().then(gateCheck); }
+}
+function closeCam() { stopStream(); $("#cam").hidden = true; renderPhotos(); }
+function renderCamStrip() {
+  $("#camCnt").textContent = S.photos.length + "장";
+  $("#camStrip").innerHTML = S.photos.slice(-5).map(p => '<img src="' + p.thumb + '" alt="">').join("");
+}
+function canvasBlob(c, q) { return new Promise(res => c.toBlob(res, "image/jpeg", q)); }
+let shooting = false;
+async function shot() {
+  if (shooting) return; shooting = true;
+  try { await shotOnce(); } finally { shooting = false; }
+}
+async function shotOnce() {
+  const v = $("#camVideo"); if (!v.videoWidth) { toast("카메라 화면이 아직 준비되지 않았습니다."); return; }
+  const w0 = v.videoWidth, h0 = v.videoHeight, sc = Math.min(1, 1600 / Math.max(w0, h0));
+  const c = document.createElement("canvas"); c.width = Math.round(w0 * sc); c.height = Math.round(h0 * sc);
+  c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+  const t = document.createElement("canvas"), ts = Math.min(1, 320 / Math.max(c.width, c.height)); t.width = Math.round(c.width * ts); t.height = Math.round(c.height * ts);
+  t.getContext("2d").drawImage(c, 0, 0, t.width, t.height);
+  const blob = await canvasBlob(c, 0.85);
+  S.photos.push({ id: "ph-" + Date.now().toString(36) + "-" + (++S.pid), blob, thumb: t.toDataURL("image/jpeg", 0.72), w: c.width, h: c.height, size: blob.size, taken_at: nowIso() });
+  const f = $("#camFlash"); f.classList.remove("go"); void f.offsetWidth; f.classList.add("go");
+  renderCamStrip();
+}
+async function flipCam() { camFacing = camFacing === "environment" ? "user" : "environment"; try { await startStream(); } catch (e) { camFacing = camFacing === "environment" ? "user" : "environment"; try { await startStream(); } catch (e2) { } toast("이 기기에서는 카메라를 전환할 수 없습니다."); } }
+async function showPhoto(id) {
+  const rec = await DB.get("photos", id); let url;
+  if (rec) url = URL.createObjectURL(rec.blob); else { const p = S.photos.find(x => x.id === id); if (!p) return; url = URL.createObjectURL(p.blob); }
+  $("#lbImg").src = url; $("#lb").hidden = false; $("#lb").dataset.url = url;
+}
+function closeLb() { const u = $("#lb").dataset.url; if (u) URL.revokeObjectURL(u); $("#lb").hidden = true; $("#lbImg").removeAttribute("src"); }
+
+/* ===== 음성: 브라우저 음성 인식(말한 만큼 받아쓰고 멈춤. 이어 말하려면 다시 누름) ===== */
+let rec = null;
+function voiceMsg(m) { $("#voiceMsg").textContent = m || ""; }
+function renderMic() { const b = $("#micBtn"); b.classList.toggle("live", S.listening); b.setAttribute("aria-pressed", S.listening ? "true" : "false"); $("#micLbl").textContent = S.listening ? "멈추기" : (S.rawVoice ? "이어서 말하기" : "말하기"); }
+function appendText(t, conf) { const el = $("#text"); el.value = (el.value ? el.value.replace(/\s+$/, "") + " " : "") + t; S.rawVoice = (S.rawVoice ? S.rawVoice + " " : "") + t; if (conf) S.voiceConf.push(conf); }
+function stopVoice() { if (rec) { try { rec.abort(); } catch (e) { } } rec = null; S.listening = false; $("#interim").textContent = ""; renderMic(); }
+function startVoice() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { voiceMsg("이 브라우저는 음성 인식을 지원하지 않습니다. 직접 입력하세요."); return; }
+  try {
+    const r = new SR(); r.lang = "ko-KR"; r.interimResults = true; r.continuous = false; r.maxAlternatives = 1;
+    r.onresult = e => {
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) { const x = e.results[i]; if (x.isFinal) appendText(x[0].transcript.trim(), x[0].confidence); else interim += x[0].transcript; }
+      $("#interim").textContent = interim;
+    };
+    r.onerror = e => {
+      const m = { "not-allowed": "마이크 권한이 꺼져 있습니다.", "service-not-allowed": "이 브라우저는 음성 인식을 허용하지 않습니다.", "audio-capture": "마이크를 사용할 수 없습니다. 다른 앱이 쓰고 있지 않은지 확인하세요.", "network": "음성 인식 서버에 연결하지 못했습니다. 인터넷 연결을 확인하거나 직접 입력하세요.", "no-speech": "말소리가 들리지 않았습니다. 다시 눌러 말씀하세요." }[e.error];
+      if (e.error !== "aborted") voiceMsg(m || "음성 인식 오류(" + e.error + ")");
+      if (e.error === "not-allowed") refreshPerms().then(gateCheck);
+    };
+    r.onend = () => { rec = null; S.listening = false; $("#interim").textContent = ""; renderMic(); };
+    rec = r; S.listening = true; renderMic(); voiceMsg("듣는 중입니다. 말이 끝나면 자동으로 멈춥니다."); r.start();
+  } catch (e) { rec = null; S.listening = false; renderMic(); voiceMsg("음성 인식을 시작하지 못했습니다. 직접 입력하세요."); }
+}
+
+/* ===== 분류·등록 ===== */
+const isDeckCtx = () => S.ctx.locType === "DECK";
+function buildCtx() {
+  const c = S.ctx, k = c.kind ? KIND[c.kind] : null;
+  return { ship: c.ship, block: c.locType === "BLOCK" ? c.loc || null : null, deck: c.locType === "DECK" ? c.loc || null : null, itr_key: null, inspection_no: c.inspNo || null, kind_id: c.kind || null, kind_group: k ? k.group : null, source: c.source };
+}
+function doClassify() {
+  const text = $("#text").value.trim();
+  if (!text) { toast("코멘트 내용이 비어 있습니다. 말하거나 입력하세요."); return; }
+  const res = classify(text, buildCtx()), r = res.result;
+  S.draft = {
+    items: r.items.map(x => ({ text: x.text, type: x.type.value, conf: x.type.confidence, ev: x.type.evidence, note: x.type.note, ok: x.type.confidence >= MIN_CONF })),
+    partner: { value: r.action_party.value, conf: r.action_party.confidence, ev: r.action_party.evidence, ok: r.action_party.confidence >= MIN_CONF },
+    kind: S.ctx.kind || "", loc: r.location_note.value, model: res.model, version: res.model_version
+  };
+  renderRight();
+}
+function pending() { const d = S.draft; return d ? d.items.filter(x => !x.ok).length + (d.partner.ok ? 0 : 1) : 0; }
+async function register() {
+  const d = S.draft; if (!d || pending() > 0) return;
+  const c = S.ctx, at = nowIso(), batch = Date.now();
+  let seq = c.inspNo ? S.records.filter(r => r.inspection_no === c.inspNo).length : S.records.filter(r => r.created_at.slice(0, 10) === at.slice(0, 10)).length;
+  const minPc = Math.min(d.partner.conf, ...d.items.map(x => x.conf));
+  const raw = S.rawVoice || $("#text").value.trim();
+  const conf = S.voiceConf.length ? Math.round(S.voiceConf.reduce((a, b) => a + b, 0) / S.voiceConf.length * 100) / 100 : null;
+  try { for (const p of S.photos) await DB.put("photos", { id: p.id, blob: p.blob, w: p.w, h: p.h, taken_at: p.taken_at }); } catch (e) { toast("사진을 저장하지 못했습니다. 저장 공간을 확인하세요."); return; }
+  const out = [];
+  for (const it of d.items) {
+    seq++;
+    out.push({
+      id: "CMT-" + batch.toString(36) + "-" + seq, no: c.inspNo ? c.inspNo + "-" + seq : "C-" + at.slice(2, 10).replace(/-/g, "") + "-" + pad(seq), batch, created_at: at, author: c.author || "",
+      ship: c.ship, block: c.locType === "BLOCK" ? c.loc || null : null, deck: c.locType === "DECK" ? c.loc || null : null, itr_key: null, inspection_no: c.inspNo || null,
+      source: c.source, photos: S.photos.map(p => ({ id: p.id, thumb: p.thumb, w: p.w, h: p.h, size: p.size, taken_at: p.taken_at })),
+      voice: S.rawVoice ? { audio_ref: null, transcript: S.rawVoice, stt_engine: "browser-ko-KR", confidence: conf } : null,
+      text_raw: raw, text_final: it.text, lang: /[가-힣]/.test(it.text) ? "ko" : "en",
+      type: it.type, action_party: d.partner.value, kind_ids: d.kind ? [d.kind] : [], location_note: d.loc,
+      model: d.model, model_version: d.version, confidence: Math.round(minPc * 100) / 100, draft_state: "confirmed", status: "미결"
+    });
+  }
+  try { for (const r of out) await DB.put("records", r); } catch (e) { toast("기록을 저장하지 못했습니다. 저장 공간을 확인하세요."); return; }
+  S.records.unshift(...out.slice().reverse());
+  S.photos = []; S.draft = null; S.rawVoice = ""; S.voiceConf = []; $("#text").value = ""; voiceMsg("");
+  renderPhotos(); renderRight(); renderMic(); renderCount(); renderList();
+  toast(out.length + "건을 미결로 저장했습니다.");
+}
+
+/* ===== 화면 ===== */
+function renderCtx() {
+  const c = S.ctx, deck = c.locType === "DECK";
+  $("#ctx").innerHTML = '<div class="grid">' +
+    '<label class="f">호선<input class="in" data-c="ship" value="' + esc(c.ship) + '" autocapitalize="characters"></label>' +
+    '<div><div class="mut">위치 구분</div><div class="seg" role="group" aria-label="위치 구분" style="margin-top:3px">' + ["BLOCK", "DECK"].map(v => '<button data-act="locType" data-v="' + v + '" class="' + (c.locType === v ? "on" : "") + '" aria-pressed="' + (c.locType === v) + '">' + v + '</button>').join("") + '</div></div>' +
+    '<label class="f">' + (deck ? "DECK" : "BLOCK") + '<input class="in" data-c="loc" list="locList" value="' + esc(c.loc) + '" placeholder="' + (deck ? "예) UPP., A, B" : "예) H11S") + '" autocapitalize="characters"></label>' +
+    '<datalist id="locList">' + (deck ? DECK_HINTS : BLOCK_HINTS).map(x => '<option value="' + esc(x) + '">').join("") + '</datalist>' +
+    '<label class="f">검사종류<select class="in" data-c="kind"><option value="">(선택 안 함)</option>' + kindOptions(c.kind) + '</select></label>' +
+    '<div style="grid-column:span 2"><div class="mut">코멘트 발행</div><div class="seg" role="group" aria-label="코멘트 발행" style="margin-top:3px">' + SOURCES.map(s => '<button data-act="src" data-v="' + s[0] + '" class="' + (c.source === s[0] ? "on" : "") + '" aria-pressed="' + (c.source === s[0]) + '">' + s[1] + '</button>').join("") + '</div></div>' +
+    '<label class="f">작성자<input class="in" data-c="author" value="' + esc(c.author) + '" placeholder="선택 입력"></label></div>';
+}
+/* 검사종류는 '중' 단위로만 보여 준다. 같은 (대, 중) 묶음은 첫 I-번호 하나로 대표한다. */
+function kindOptions(sel) {
+  const sk = kindKey(sel);
+  return GROUPS.map(g => '<optgroup label="' + esc(g) + '">' + Object.values(KIND_REP).filter(k => k.group === g).map(k => '<option value="' + k.id + '"' + (sk === kindKey(k.id) ? " selected" : "") + '>' + esc(k.major) + '</option>').join("") + '</optgroup>').join("");
+}
+function renderPhotos() {
+  $("#thumbs").innerHTML = S.photos.length ? S.photos.map((p, i) =>
+    '<div class="th"><img data-act="viewPhoto" data-id="' + p.id + '" src="' + p.thumb + '" alt="현장 사진 ' + (i + 1) + ' 확대">' +
+    '<button class="x" data-act="rmPhoto" data-id="' + p.id + '" aria-label="사진 ' + (i + 1) + ' 삭제">×</button>' +
+    '<div class="m"><span>사진 ' + (i + 1) + '</span><span>' + kb(p.size) + '</span></div></div>').join("")
+    : '<div class="empty" style="grid-column:1/-1">사진이 없습니다. [카메라로 찍기]를 누르세요.</div>';
+}
+function confBar(c) { return '<span class="bar ' + (c < MIN_CONF ? "lo" : "") + '" aria-hidden="true"><i style="width:' + Math.round(c * 100) + '%"></i></span> <span class="mut">' + Math.round(c * 100) + '%</span>'; }
+function renderRight() {
+  const el = $("#right"), d = S.draft;
+  if (!d) { el.innerHTML = '<h2><span class="n">3</span>자동 분류 초안</h2><div class="empty">왼쪽에 기록하고 [자동 분류]를 누르면 초안이 여기에 나옵니다.</div>'; return; }
+  const p = pending();
+  el.innerHTML = '<h2><span class="n">3</span>자동 분류 초안 <span class="pill nv">초안</span> <span class="mut">규칙 기반 분류(이 기기 안에서 실행, LLM 아님)</span></h2><div class="stack">' +
+    '<div class="fld ' + (d.partner.ok ? "" : "lo") + '"><div class="hd"><b>조치 협력사</b>' + confBar(d.partner.conf) + (d.partner.ok ? '<span class="pill ok">확인됨</span>' : '<span class="pill wn">확인 필요</span>') + '</div>' +
+    '<div class="chips" role="group" aria-label="조치 협력사">' + PARTNERS.map(x => '<button class="chip ' + (d.partner.value === x ? "on" : "") + '" data-act="partner" data-v="' + x + '" title="' + esc(PARTNER_FULL[x]) + '" aria-pressed="' + (d.partner.value === x) + '">' + x + '</button>').join("") + '</div>' +
+    '<div class="ev">근거: ' + esc(d.partner.ev.join(", ")) + (d.partner.ok ? "" : " · 맞으면 칩을 다시 누르거나 다른 협력사를 고르세요") + '</div></div>' +
+    '<div class="row"><label class="f" style="flex:1;min-width:200px">검사종류<select class="in" data-f="kind"><option value="">(선택 안 함)</option>' + kindOptions(d.kind) + '</select></label>' +
+    '<label class="f" style="flex:1;min-width:160px">위치 메모<input class="in" data-f="loc" value="' + esc(d.loc) + '" placeholder="예) 상부 용접선 끝단"></label></div>' +
+    '<div class="items" aria-label="코멘트 ' + d.items.length + '건">' + d.items.map((it, i) =>
+      '<div class="it ' + (it.ok ? "" : "lo") + '"><div class="row"><b>코멘트 ' + (i + 1) + '</b>' + confBar(it.conf) + (it.ok ? '<span class="pill ok">확인됨</span>' : '<span class="pill wn">확인 필요</span>') + '</div>' +
+      '<div class="r"><textarea class="txt" style="min-height:60px" data-f="itext" data-i="' + i + '" aria-label="코멘트 ' + (i + 1) + ' 내용">' + esc(it.text) + '</textarea>' +
+      '<label class="f">유형<select class="in" data-f="itype" data-i="' + i + '">' + TYPES.map(t => '<option' + (t === it.type ? " selected" : "") + '>' + esc(t) + '</option>').join("") + '</select></label></div>' +
+      '<div class="ev">근거: ' + (it.ev.length ? esc(it.ev.join(", ")) : "일치하는 키워드 없음") + (it.note ? " · " + esc(it.note) : "") + (it.ok ? "" : ' · <button class="chip" data-act="okItem" data-i="' + i + '">맞음</button>') + '</div></div>').join("") + '</div></div>' +
+    '<div class="foot"><span class="st">' + (p ? '<span class="pill wn">확인 필요 ' + p + '건</span>' : '<span class="pill ok">모두 확인됨</span>') + ' <span class="mut">사진 ' + S.photos.length + '장 · 저장 후 상태는 미결</span></span>' +
+    '<button class="btn p" data-act="register"' + (p ? " disabled" : "") + '>확인하고 저장 (' + d.items.length + '건)</button></div>';
+}
+function renderCount() { $("#cnt").textContent = S.records.length ? "(" + S.records.length + ")" : ""; }
+function renderList() {
+  const cards = S.records.map(r => {
+    const loc = r.block ? "BLOCK " + r.block : r.deck ? "DECK " + r.deck : "위치 없음";
+    return '<div class="rc"><div class="h"><label class="selbox"><input type="checkbox" data-act="sel" data-id="' + r.id + '"' + (S.sel.has(r.id) ? " checked" : "") + ' aria-label="' + esc(r.no) + ' 선택"></label><b>' + esc(r.no) + '</b><span class="pill nv">' + esc(SOURCES.find(s => s[0] === r.source)[1]) + '</span><span class="mut">' + esc(r.ship + " · " + loc) + '</span><span class="mut" style="margin-left:auto">' + esc(mmdd(r.created_at) + " " + r.created_at.slice(11, 16)) + '</span></div>' +
+      (r.kind_ids.length ? '<div class="mut">' + esc(KIND[r.kind_ids[0]] ? KIND[r.kind_ids[0]].major : r.kind_ids[0]) + '</div>' : "") +
+      '<div class="t">' + esc(r.text_final) + '</div>' + (r.location_note ? '<div class="mut">위치: ' + esc(r.location_note) + '</div>' : "") +
+      '<div class="h"><span class="pill">' + esc(r.type) + '</span><span class="pill">' + esc(r.action_party) + '</span>' + (r.packaged_at ? '<span class="pill ok" title="패키지로 만든 시각">패키지 ' + esc(mmdd(r.packaged_at) + " " + r.packaged_at.slice(11, 16)) + '</span>' : "") + (r.author ? '<span class="mut">' + esc(r.author) + '</span>' : "") + '</div>' +
+      (r.photos.length ? '<div class="ph">' + r.photos.map(p => '<img data-act="viewPhoto" data-id="' + p.id + '" src="' + p.thumb + '" alt="사진 확대">').join("") + '</div>' : "") +
+      '<div class="row"><button class="chip" data-act="status" data-id="' + r.id + '">' + (r.status === "미결" ? '<span style="color:var(--bd)">미결</span>' : '<span style="color:var(--ok)">종결</span>') + '</button>' +
+      '<button class="chip" data-act="delRec" data-id="' + r.id + '" style="margin-left:auto">삭제</button></div></div>';
+  }).join("");
+  $("#tab-list").innerHTML = pkgBarHtml() + '<div class="card"><h2>저장한 코멘트 <span class="mut">이 기기 안에 저장됩니다</span></h2>' +
+    (S.records.length ? '<div class="recs">' + cards + '</div>' : '<div class="empty">아직 저장한 코멘트가 없습니다. [기록]에서 첫 코멘트를 남겨 보세요.</div>') + '</div>';
+  renderPkgOut(); updatePkgBtn();
+}
+async function renderSet() {
+  let usage = "", persisted = "";
+  try { if (navigator.storage && navigator.storage.estimate) { const e = await navigator.storage.estimate(); usage = kb(e.usage || 0) + " 사용 / " + kb(e.quota || 0) + " 중"; } if (navigator.storage && navigator.storage.persisted) persisted = (await navigator.storage.persisted()) ? "보호됨(브라우저가 임의로 지우지 않음)" : "보호 안 됨(저장 공간이 부족하면 지워질 수 있음)"; } catch (e) { }
+  const pill = k => '<span class="pill ' + PERM_TXT[S.perm[k]][1] + '">' + PERM_TXT[S.perm[k]][0] + '</span>';
+  $("#tab-set").innerHTML =
+    '<div class="card"><h2>권한</h2><div class="kvs"><span>카메라</span>' + pill("cam") + '<span>마이크</span>' + pill("mic") + '</div><div class="row" style="margin-top:8px"><button class="btn sm" data-act="recheck">다시 확인</button></div><p class="note">권한이 꺼지면 앱이 다시 권한 화면으로 돌아갑니다.</p></div>' +
+    '<div class="card"><h2>내보내기·백업</h2><div class="row"><button class="btn sm" data-act="expCsv">엑셀용 CSV</button><button class="btn sm" data-act="expJson">JSON</button>' +
+    '<label class="row mut" style="gap:6px"><input type="checkbox" id="expPhotos"> JSON에 사진 포함(용량이 커짐)</label></div>' +
+    '<p class="note">기록은 이 기기에만 있습니다. 브라우저 데이터를 지우거나 앱을 삭제하면 사라지므로 중요한 기록은 내보내 두세요.</p></div>' +
+    '<div class="card"><h2>저장 공간</h2><div class="kvs"><span>사용량</span><span>' + esc(usage || "확인할 수 없음") + '</span><span>보호 상태</span><span>' + esc(persisted || "확인할 수 없음") + '</span></div></div>' +
+    '<div class="card"><h2>분류 방식</h2><p class="note" style="margin:0">키워드 규칙으로 코멘트를 나누고 유형(12종)·조치 협력사(8곳)·위치 메모를 제안합니다. LLM이 아니며 기기 안에서 실행됩니다. 신뢰도는 규칙 종류별 고정값이고, ' + Math.round(MIN_CONF * 100) + '% 미만은 확인해야 저장할 수 있습니다. 부정 표현("누설 없음")이나 \'미흡\' 같은 표현은 아직 처리하지 못합니다.</p></div>' +
+    '<div class="card"><h2>데이터 삭제</h2><div class="row"><button class="btn sm rec" data-act="wipe" id="wipeBtn">저장한 코멘트 전체 삭제</button></div><p class="note">삭제하면 되돌릴 수 없습니다. 먼저 내보내기를 권장합니다.</p></div>' +
+    '<div class="card"><h2>앱 정보</h2><div class="kvs"><span>버전</span><span>' + APP_VER + '</span><span>설치 상태</span><span>' + (matchMedia("(display-mode: standalone)").matches ? "앱으로 실행 중" : "브라우저에서 실행 중") + '</span></div>' +
+    (S.installEv ? '<div class="row" style="margin-top:8px"><button class="btn sm p" data-act="install">홈 화면에 앱 설치</button></div>' : '<p class="note">설치하려면 크롬 메뉴(⋮) → \'홈 화면에 추가\' 또는 \'앱 설치\'를 누르세요.</p>') + '</div>';
+}
+function showTab(t) {
+  S.tab = t;
+  ["rec", "list", "set"].forEach(x => { $("#tab-" + x).hidden = x !== t; });
+  document.querySelectorAll("#tabs button").forEach(b => { const on = b.dataset.tab === t; b.classList.toggle("on", on); b.setAttribute("aria-selected", on); });
+  if (t === "list") renderList(); if (t === "set") renderSet();
+}
+
+/* ===== 내보내기 ===== */
+function download(name, blob) { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500); }
+const stamp = () => { const t = nowIso(); return t.slice(0, 10).replace(/-/g, "") + "_" + t.slice(11, 16).replace(":", ""); };
+function toDataUrl(blob) { return new Promise(res => { const f = new FileReader(); f.onload = () => res(f.result); f.onerror = () => res(null); f.readAsDataURL(blob); }); }
+async function expJson() {
+  const withPh = $("#expPhotos") && $("#expPhotos").checked;
+  const out = [];
+  for (const r of S.records.slice().reverse()) {
+    const o = Object.assign({}, r); o.photos = [];
+    for (const p of r.photos) { const x = { id: p.id, w: p.w, h: p.h, size: p.size, taken_at: p.taken_at }; if (withPh) { const rec = await DB.get("photos", p.id); x.image = rec ? await toDataUrl(rec.blob) : null; } o.photos.push(x); }
+    out.push(o);
+  }
+  download("comments_" + stamp() + ".json", new Blob([JSON.stringify({ app: "field-comment", version: APP_VER, exported_at: nowIso(), records: out }, null, 2)], { type: "application/json" }));
+  toast("JSON을 내보냈습니다.");
+}
+function expCsv() {
+  const q = v => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"';
+  const head = ["번호", "일시", "호선", "위치구분", "위치", "검사종류(중)", "출처", "유형", "조치협력사", "내용", "위치메모", "사진수", "상태", "작성자"];
+  const rows = S.records.slice().reverse().map(r => [r.no, r.created_at.replace("T", " "), r.ship, r.block ? "BLOCK" : r.deck ? "DECK" : "", r.block || r.deck || "", r.kind_ids[0] && KIND[r.kind_ids[0]] ? KIND[r.kind_ids[0]].major : "", SOURCES.find(s => s[0] === r.source)[1], r.type, r.action_party, r.text_final, r.location_note, r.photos.length, r.status, r.author].map(q).join(","));
+  download("comments_" + stamp() + ".csv", new Blob(["﻿" + [head.map(q).join(",")].concat(rows).join("\r\n")], { type: "text/csv;charset=utf-8" }));
+  toast("CSV를 내보냈습니다.");
+}
+
+
+/* ===== 패키지(zip): 사진과 코멘트를 한 파일로 묶어 메일·메신저로 보낸다 ===== */
+const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(u8) { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC_T[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function makeZip(files) { // 압축 없이 담는 zip(사진은 이미 JPEG라 압축 이득이 없다). 파일명은 UTF-8
+  const enc = new TextEncoder(), d = new Date(), tm = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1), dt = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+  const parts = [], cds = []; let off = 0;
+  for (const f of files) {
+    const nb = enc.encode(f.name), crc = crc32(f.data), sz = f.data.length;
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(10, tm, true); lh.setUint16(12, dt, true);
+    lh.setUint32(14, crc, true); lh.setUint32(18, sz, true); lh.setUint32(22, sz, true); lh.setUint16(26, nb.length, true);
+    parts.push(lh.buffer, nb, f.data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true); ch.setUint16(12, tm, true); ch.setUint16(14, dt, true);
+    ch.setUint32(16, crc, true); ch.setUint32(20, sz, true); ch.setUint32(24, sz, true); ch.setUint16(28, nb.length, true); ch.setUint32(42, off, true);
+    cds.push(ch.buffer, nb); off += 30 + nb.length + sz;
+  }
+  const cdSize = cds.reduce((a, b) => a + b.byteLength, 0), end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true); end.setUint32(12, cdSize, true); end.setUint32(16, off, true);
+  return new Blob([...parts, ...cds, end.buffer], { type: "application/zip" });
+}
+async function sha256(u8) { try { const h = await crypto.subtle.digest("SHA-256", u8); return Array.from(new Uint8Array(h)).map(x => x.toString(16).padStart(2, "0")).join(""); } catch (e) { return null; } }
+const asciiName = s => String(s).replace(/[^A-Za-z0-9._-]/g, "_");
+function splitRecords(recs, limit) { // 같은 때 등록한 코멘트(사진 공유)는 한 묶음으로 두고, 크기 제한을 넘으면 다음 파일로 나눈다
+  const g = new Map();
+  recs.slice().sort((a, b) => (a.created_at + a.id).localeCompare(b.created_at + b.id)).forEach(r => { if (!g.has(r.batch)) g.set(r.batch, []); g.get(r.batch).push(r); });
+  const out = []; let cur = [], size = 0;
+  for (const rs of g.values()) {
+    const seen = new Set(); let sz = 3000 * rs.length; rs.forEach(r => r.photos.forEach(p => { if (!seen.has(p.id)) { seen.add(p.id); sz += p.size; } }));
+    if (limit && cur.length && size + sz > limit) { out.push(cur); cur = []; size = 0; }
+    cur.push(...rs); size += sz;
+  }
+  if (cur.length) out.push(cur);
+  return out;
+}
+async function buildPart(recs, idx, total, st) {
+  const enc = new TextEncoder(), names = new Map(), files = [], list = [], missing = [];
+  for (const r of recs) for (let i = 0; i < r.photos.length; i++) {
+    const p = r.photos[i]; if (names.has(p.id)) continue;
+    const rec = await DB.get("photos", p.id);
+    if (!rec) { names.set(p.id, null); missing.push(p.id); continue; }
+    const data = new Uint8Array(await rec.blob.arrayBuffer()), name = "photos/" + asciiName(r.no) + "_p" + (i + 1) + ".jpg";
+    names.set(p.id, name); files.push({ name, data });
+  }
+  const json = recs.map(r => { const o = Object.assign({}, r); o.photos = r.photos.map(p => ({ file: names.get(p.id), id: p.id, w: p.w, h: p.h, size: p.size, taken_at: p.taken_at })); return o; });
+  const q = v => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"';
+  const head = ["번호", "일시", "호선", "위치구분", "위치", "검사종류(중)", "발행", "유형", "조치협력사", "내용", "위치메모", "사진파일", "상태", "작성자"];
+  const rows = json.map(r => [r.no, r.created_at.replace("T", " "), r.ship, r.block ? "BLOCK" : r.deck ? "DECK" : "", r.block || r.deck || "", r.kind_ids[0] && KIND[r.kind_ids[0]] ? KIND[r.kind_ids[0]].major : "", SOURCES.find(s => s[0] === r.source)[1], r.type, r.action_party, r.text_final, r.location_note, r.photos.map(p => p.file || "(사진 없음)").join(" ; "), r.status, r.author].map(q).join(","));
+  const csv = enc.encode("﻿" + [head.map(q).join(",")].concat(rows).join("\r\n"));
+  const js = enc.encode(JSON.stringify({ schema: "field-comment-package/1", records: json }, null, 2));
+  const all = [{ name: "comments.csv", data: csv }, { name: "comments.json", data: js }].concat(files);
+  for (const f of all) list.push({ name: f.name, size: f.data.length, sha256: await sha256(f.data) });
+  const manifest = enc.encode(JSON.stringify({ schema: "field-comment-package/1", app: "field-comment", app_version: APP_VER, created_at: nowIso(), part: { index: idx, total }, counts: { records: recs.length, photos: files.length }, missing_photos: missing, files: list }, null, 2));
+  const blob = makeZip([{ name: "manifest.json", data: manifest }].concat(all));
+  return { name: "comment-pkg_" + st + (total > 1 ? "_" + idx + "of" + total : "") + ".zip", blob, ids: recs.map(r => r.id), records: recs.length, photos: files.length, size: blob.size, done: "" };
+}
+async function makePkg() {
+  if (S.pkgBusy) return;
+  const recs = S.records.filter(r => S.sel.has(r.id));
+  if (!recs.length) { toast("묶을 코멘트를 선택하세요."); return; }
+  const lim = (+$("#pkgLimit").value || 0) * 1048576; lsSet("pkgLimit", $("#pkgLimit").value);
+  S.pkgBusy = true; updatePkgBtn();
+  try {
+    const groups = splitRecords(recs, lim), st = stamp(), out = [];
+    for (let i = 0; i < groups.length; i++) out.push(await buildPart(groups[i], i + 1, groups.length, st));
+    S.pkgs = out; renderPkgOut(); toast("패키지 " + out.length + "개를 만들었습니다.");
+  } catch (e) { toast("패키지를 만들지 못했습니다. 저장 공간을 확인하세요."); }
+  S.pkgBusy = false; updatePkgBtn();
+}
+async function markPackaged(pk, how) {
+  const at = nowIso();
+  for (const id of pk.ids) { const r = S.records.find(x => x.id === id); if (r) { r.packaged_at = at; try { await DB.put("records", r); } catch (e) { } } }
+  pk.done = how + " " + at.slice(11, 16); renderList();
+}
+function sendPkg(i) { // 공유 창(메일·메신저 선택). 지원하지 않는 기기는 저장으로 대체한다. 사용자 터치 직후 바로 호출해야 한다.
+  const pk = S.pkgs[i]; if (!pk) return;
+  const file = new File([pk.blob], pk.name, { type: "application/zip" });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    navigator.share({ files: [file], title: "현장 코멘트 패키지", text: "코멘트 " + pk.records + "건 · 사진 " + pk.photos + "장" })
+      .then(() => markPackaged(pk, "공유 창 열림"))
+      .catch(e => { if (e && e.name !== "AbortError") { toast("공유하지 못해 파일로 저장합니다."); savePkg(i); } });
+  } else { toast("이 기기는 공유 창을 지원하지 않아 파일로 저장합니다."); savePkg(i); }
+}
+function savePkg(i) { const pk = S.pkgs[i]; if (!pk) return; download(pk.name, pk.blob); markPackaged(pk, "저장"); }
+function pkgBarHtml() {
+  const lim = lsGet("pkgLimit", "20");
+  return '<div class="card" id="pkgCard"><h2>패키지로 묶어 보내기 <span class="mut">사진 + 코멘트를 zip 한 파일로</span></h2>' +
+    '<div class="row"><button class="chip" data-act="selAll">전체 선택</button><button class="chip" data-act="selNew">아직 안 묶은 것만</button><button class="chip" data-act="selNone">선택 해제</button></div>' +
+    '<div class="row" style="margin-top:8px"><label class="f" style="min-width:170px">파일 하나의 최대 크기<select class="in" id="pkgLimit">' + [["10", "10 MB"], ["20", "20 MB (메일 권장)"], ["25", "25 MB"], ["0", "나누지 않음"]].map(o => '<option value="' + o[0] + '"' + (lim === o[0] ? " selected" : "") + '>' + o[1] + '</option>').join("") + '</select></label>' +
+    '<button class="btn p" id="pkgBtn" data-act="mkPkg" style="margin-top:15px">패키지 만들기</button></div>' +
+    '<div id="pkgOut"></div>' +
+    '<p class="note">암호는 걸리지 않습니다. 받는 사람이 사내 PC에서 압축을 풀면 comments.csv(엑셀용)·comments.json(업로드용)·photos 폴더·manifest.json(파일별 해시)이 나옵니다. 용량을 넘으면 여러 파일로 나뉩니다. 공유 창이 열렸다는 것만 알 수 있고, 실제로 전송됐는지는 확인되지 않습니다.</p></div>';
+}
+function updatePkgBtn() { const b = $("#pkgBtn"); if (!b) return; const n = S.records.filter(r => S.sel.has(r.id)).length; b.textContent = S.pkgBusy ? "만드는 중…" : n ? "선택한 " + n + "건 패키지 만들기" : "패키지 만들기"; b.disabled = S.pkgBusy || !n; }
+function renderPkgOut() {
+  const el = $("#pkgOut"); if (!el) return;
+  el.innerHTML = S.pkgs.length ? '<div class="stack" style="margin-top:10px">' + S.pkgs.map((p, i) =>
+    '<div class="perm"><div style="flex:1;min-width:0"><b style="word-break:break-all">' + esc(p.name) + '</b><div class="mut">코멘트 ' + p.records + '건 · 사진 ' + p.photos + '장 · ' + kb(p.size) + (p.done ? ' · <span style="color:var(--ok)">' + esc(p.done) + '</span>' : "") + '</div></div>' +
+    '<button class="btn p sm" data-act="sendPkg" data-i="' + i + '">보내기</button><button class="btn sm" data-act="savePkg" data-i="' + i + '">저장</button></div>').join("") + '</div>' : "";
+}
+
+/* ===== 이벤트 ===== */
+let delArm = null, wipeArm = null;
+document.addEventListener("click", async e => {
+  const b = e.target.closest("[data-act]"); if (!b) return;
+  const a = b.dataset.act, d = S.draft;
+  if (a === "tab") showTab(b.dataset.tab);
+  else if (a === "askPerm") askPerm();
+  else if (a === "recheck") { await refreshPerms(); await gateCheck(); if (S.tab === "set") renderSet(); }
+  else if (a === "locType") { S.ctx.locType = b.dataset.v; S.ctx.loc = ""; lsSet("ctx", S.ctx); renderCtx(); }
+  else if (a === "src") { S.ctx.source = b.dataset.v; lsSet("ctx", S.ctx); renderCtx(); }
+  else if (a === "openCam") openCam();
+  else if (a === "shot") shot();
+  else if (a === "flip") flipCam();
+  else if (a === "closeCam") closeCam();
+  else if (a === "viewPhoto") showPhoto(b.dataset.id);
+  else if (a === "closeLb") closeLb();
+  else if (a === "rmPhoto") { S.photos = S.photos.filter(p => p.id !== b.dataset.id); renderPhotos(); if (d) renderRight(); }
+  else if (a === "mic") { if (S.listening) stopVoice(); else startVoice(); }
+  else if (a === "classify") doClassify();
+  else if (a === "clear") { stopVoice(); S.photos = []; S.draft = null; S.rawVoice = ""; S.voiceConf = []; $("#text").value = ""; voiceMsg(""); renderPhotos(); renderRight(); renderMic(); }
+  else if (a === "partner" && d) { d.partner.value = b.dataset.v; d.partner.ok = true; renderRight(); }
+  else if (a === "okItem" && d) { d.items[+b.dataset.i].ok = true; renderRight(); }
+  else if (a === "register") register();
+  else if (a === "status") { const r = S.records.find(x => x.id === b.dataset.id); r.status = r.status === "미결" ? "종결" : "미결"; await DB.put("records", r); renderList(); }
+  else if (a === "delRec") {
+    if (delArm !== b.dataset.id) { delArm = b.dataset.id; b.textContent = "정말 삭제"; setTimeout(() => { if (delArm === b.dataset.id) { delArm = null; if (b.isConnected) b.textContent = "삭제"; } }, 3000); return; }
+    delArm = null; const r = S.records.find(x => x.id === b.dataset.id); await DB.del("records", r.id);
+    S.records = S.records.filter(x => x.id !== r.id); S.sel.delete(r.id);
+    for (const p of r.photos) if (!S.records.some(x => x.photos.some(y => y.id === p.id))) await DB.del("photos", p.id);
+    renderCount(); renderList(); toast("삭제했습니다.");
+  }
+  else if (a === "sel") { if (b.checked) S.sel.add(b.dataset.id); else S.sel.delete(b.dataset.id); updatePkgBtn(); return; }
+  else if (a === "selAll") { S.records.forEach(r => S.sel.add(r.id)); renderList(); }
+  else if (a === "selNew") { S.sel = new Set(S.records.filter(r => !r.packaged_at).map(r => r.id)); renderList(); }
+  else if (a === "selNone") { S.sel.clear(); renderList(); }
+  else if (a === "mkPkg") makePkg();
+  else if (a === "sendPkg") sendPkg(+b.dataset.i);
+  else if (a === "savePkg") savePkg(+b.dataset.i);
+  else if (a === "expCsv") expCsv();
+  else if (a === "expJson") expJson();
+  else if (a === "wipe") {
+    if (!wipeArm) { wipeArm = true; b.textContent = "정말 전체 삭제(되돌릴 수 없음)"; setTimeout(() => { wipeArm = null; if (b.isConnected) b.textContent = "저장한 코멘트 전체 삭제"; }, 4000); return; }
+    wipeArm = null; await DB.clear("records"); await DB.clear("photos"); S.records = []; S.sel.clear(); S.pkgs = []; renderCount(); renderList(); renderSet(); toast("전체 삭제했습니다.");
+  }
+  else if (a === "install" && S.installEv) { S.installEv.prompt(); try { await S.installEv.userChoice; } catch (e2) { } S.installEv = null; renderSet(); $("#installBtn").hidden = true; }
+});
+document.addEventListener("input", e => {
+  const t = e.target;
+  if (t.dataset.c) { S.ctx[t.dataset.c] = t.value.trim(); lsSet("ctx", S.ctx); }
+  else if (t.dataset.f === "itext" && S.draft) S.draft.items[+t.dataset.i].text = t.value;
+  else if (t.dataset.f === "loc" && S.draft) S.draft.loc = t.value;
+});
+document.addEventListener("change", e => {
+  const t = e.target, d = S.draft;
+  if (t.dataset.c === "kind") { S.ctx.kind = t.value; lsSet("ctx", S.ctx); }
+  else if (!d) return;
+  else if (t.dataset.f === "itype") { const it = d.items[+t.dataset.i]; it.type = t.value; it.ok = true; renderRight(); }
+  else if (t.dataset.f === "kind") d.kind = t.value;
+});
+$("#installBtn").addEventListener("click", () => showTab("set"));
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); S.installEv = e; $("#installBtn").hidden = false; if (S.tab === "set") renderSet(); });
+window.addEventListener("appinstalled", () => { S.installEv = null; $("#installBtn").hidden = true; toast("앱이 설치되었습니다."); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") { if (!$("#lb").hidden) closeLb(); else if (!$("#cam").hidden) closeCam(); } });
+document.addEventListener("visibilitychange", () => { if (document.hidden) { closeCam(); stopVoice(); } else refreshPerms().then(gateCheck); });
+
+/* ===== 시작 ===== */
+async function enterApp() {
+  S.entered = true;
+  try { await DB.open(); S.records = (await DB.all("records")).sort((a, b) => (b.created_at + b.id).localeCompare(a.created_at + a.id)); } catch (e) { toast("이 브라우저에서는 저장소를 열 수 없습니다. 기록이 저장되지 않습니다."); }
+  try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) { }
+  $("#verPill").textContent = "v" + APP_VER;
+  $("#gate").hidden = true; $("#app").hidden = false;
+  if (S.ctx.kind) { const rp = KIND_REP[kindKey(S.ctx.kind)]; S.ctx.kind = rp ? rp.id : ""; lsSet("ctx", S.ctx); }
+  renderCtx(); renderPhotos(); renderRight(); renderCount(); renderList(); renderMic();
+}
+(async function init() {
+  if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(() => { });
+  await refreshPerms();
+  await gateCheck();
+})();
+</script>
+</body>
+</html>

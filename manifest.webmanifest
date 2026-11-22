@@ -1,0 +1,17 @@
+{
+  "id": "./",
+  "name": "현장 코멘트 기록",
+  "short_name": "코멘트기록",
+  "description": "현장 검사 코멘트를 사진·음성·텍스트로 기록하고 자동 분류합니다.",
+  "lang": "ko",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#2a3590",
+  "background_color": "#f3f4f8",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
