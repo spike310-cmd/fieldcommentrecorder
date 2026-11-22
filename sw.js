@@ -1,6 +1,6 @@
 /* 서비스 워커: 앱 파일을 기기에 저장해 인터넷 없이도 열리게 한다.
    앱 파일을 고치면 아래 CACHE 이름의 숫자를 올려야 기기에 새 버전이 들어간다. */
-const CACHE = "field-comment-v8";
+const CACHE = "field-comment-v9";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 
 self.addEventListener("install", e => {

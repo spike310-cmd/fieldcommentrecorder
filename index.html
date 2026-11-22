@@ -183,7 +183,7 @@ textarea.txt{width:100%;min-height:92px;padding:10px;border:1px solid var(--line
 
 <script>
 "use strict";
-const APP_VER = "1.3.0";
+const APP_VER = "1.3.1";
 
 /* ===== 기준 데이터: SEJIN 기본 ITP 마스터의 검사종류 I-01~I-62 (ERP 코드는 쓰지 않는다) ===== */
 const KINDS_RAW = `I-01|STRUCTURE|BLOCK INSPECTION|ASSEMBLY BLOCK
@@ -421,38 +421,94 @@ async function askPerm() {
 
 /* ===== 카메라(앱 안에서 직접 촬영) ===== */
 let camStream = null, camFacing = "environment", camTrack = null, darkTimer = null;
-async function startStream() {
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function startStream(deviceId, noSearch) {
   stopStream();
-  camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: camFacing }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+  const pref = deviceId || (camFacing === "environment" ? lsGet("torchDevice", null) : null); // 플래시가 되는 것으로 확인된 카메라를 기억해 둔다
+  const vc = { width: { ideal: 1920 }, height: { ideal: 1080 } };
+  if (pref) vc.deviceId = { exact: pref }; else vc.facingMode = { ideal: camFacing };
+  try { camStream = await navigator.mediaDevices.getUserMedia({ video: vc, audio: false }); }
+  catch (e) { if (pref) { lsSet("torchDevice", null); return startStream(null, noSearch); } throw e; }
   const v = $("#camVideo"); v.srcObject = camStream; try { await v.play(); } catch (e) { }
-  camTrack = camStream.getVideoTracks()[0] || null; S.torch = false; checkTorch();
+  camTrack = camStream.getVideoTracks()[0] || null; S.torch = false;
+  await detectFlash(noSearch || !!pref);
 }
-/* 플래시(토치): 카메라 권한 안에서 쓰는 기능이라 별도 권한은 없다. 뒷면 카메라 + 지원 기기에서만 버튼이 보인다. */
-function checkTorch() {
-  let ok = false;
-  try { const caps = camTrack && camTrack.getCapabilities ? camTrack.getCapabilities() : {}; ok = !!caps.torch; } catch (e) { }
-  S.torchOk = ok; renderTorch();
+/* 플래시(토치): 카메라 권한 안에서 쓰는 기능이라 별도 권한은 없다. 뒷면 카메라에서만 쓴다.
+   갤럭시처럼 뒷면 카메라가 여러 개인 기기는 기본 카메라가 플래시를 못 쓸 수 있어, 되는 카메라를 찾아 바꾼다.
+   토치가 아예 안 되면 '사진 찍는 순간만 터지는 플래시'(ImageCapture)로 대신한다. */
+async function trackHasTorch(tr, tries) {
+  for (let i = 0; i < tries; i++) { try { if (tr.getCapabilities && tr.getCapabilities().torch) return true; } catch (e) { } await sleep(350); }
+  return false;
 }
-function renderTorch() { const b = $("#torchBtn"); b.hidden = !S.torchOk; b.classList.toggle("on", !!S.torch); b.setAttribute("aria-pressed", S.torch ? "true" : "false"); b.textContent = S.torch ? "플래시 켜짐" : "플래시 꺼짐"; if (S.torch) $("#camHint").hidden = true; }
+async function findTorchCamera() {
+  stopStream();
+  let devs = []; try { devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput"); } catch (e) { }
+  for (const d of devs) {
+    if (/front|user|전면/i.test(d.label)) continue;
+    let s; try { s = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: d.deviceId } }, audio: false }); } catch (e) { continue; }
+    const ok = await trackHasTorch(s.getVideoTracks()[0], 3); s.getTracks().forEach(x => x.stop());
+    if (ok) return d.deviceId;
+  }
+  return null;
+}
+async function detectFlash(noSearch) {
+  S.torchOk = false; S.shotFlash = false; renderTorch();
+  const tr = camTrack; if (camFacing !== "environment" || !tr) return;
+  if (await trackHasTorch(tr, 4)) { if (tr === camTrack) { S.torchOk = true; renderTorch(); } return; }
+  if (tr !== camTrack) return;
+  if (!noSearch) {
+    toast("플래시가 되는 카메라를 찾는 중…");
+    const id = await findTorchCamera();
+    if (id) lsSet("torchDevice", id);
+    if ($("#cam").hidden) return;
+    return startStream(id || null, true);
+  }
+  try { if (window.ImageCapture) { const pc = await new ImageCapture(tr).getPhotoCapabilities(); if (tr === camTrack && (pc.fillLightMode || []).indexOf("flash") >= 0) S.shotFlash = true; } } catch (e) { }
+  renderTorch();
+}
+function renderTorch() {
+  const b = $("#torchBtn"), on = !!S.torch; b.hidden = !(S.torchOk || S.shotFlash); b.classList.toggle("on", on); b.setAttribute("aria-pressed", on ? "true" : "false");
+  b.textContent = (S.torchOk ? "플래시 " : "찍을 때 플래시 ") + (on ? "켜짐" : "꺼짐"); if (on) $("#camHint").hidden = true;
+}
 async function setTorch(on) {
-  if (!camTrack || !S.torchOk) return;
-  try { await camTrack.applyConstraints({ advanced: [{ torch: on }] }); S.torch = on; }
-  catch (e) { S.torch = false; toast("이 기기에서는 플래시를 켤 수 없습니다."); }
+  if (S.torchOk && camTrack) {
+    try { await camTrack.applyConstraints({ advanced: [{ torch: on }] }); S.torch = on; }
+    catch (e) { S.torch = false; toast("이 기기에서는 플래시를 켤 수 없습니다."); }
+  } else if (S.shotFlash) S.torch = on;
   renderTorch();
 }
 function watchDark() { // 화면이 어두우면 플래시를 안내한다(1초마다 작은 표본으로 밝기 측정)
   clearInterval(darkTimer); const c = document.createElement("canvas"); c.width = c.height = 24; const g = c.getContext("2d", { willReadFrequently: true });
   darkTimer = setInterval(() => {
-    const v = $("#camVideo"); if (!v.videoWidth || !S.torchOk || S.torch) { $("#camHint").hidden = true; return; }
+    const v = $("#camVideo"); if (!v.videoWidth || !(S.torchOk || S.shotFlash) || S.torch) { $("#camHint").hidden = true; return; }
     try { g.drawImage(v, 0, 0, 24, 24); const d = g.getImageData(0, 0, 24, 24).data; let s = 0; for (let i = 0; i < d.length; i += 4) s += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; $("#camHint").hidden = s / (d.length / 4) > 45; } catch (e) { }
   }, 1000);
+}
+/* 카메라·플래시 진단: 카메라마다 플래시 지원 여부와 실제 켜기 결과를 적어 준다(설정 탭) */
+async function runDiag() {
+  const out = [], box = $("#diagOut"), L = s => { out.push(s); box.textContent = out.join("\n"); };
+  closeCam(); lsSet("torchDevice", null); box.hidden = false; $("#diagCopy").hidden = false;
+  L("앱 " + APP_VER + " · " + navigator.userAgent.replace(/^Mozilla\/5\.0 /, ""));
+  L("보안연결 " + window.isSecureContext + " · ImageCapture " + !!window.ImageCapture);
+  let devs = []; try { devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput"); } catch (e) { L("장치 목록 실패: " + e.name); }
+  L("카메라 " + devs.length + "개");
+  for (const d of devs) {
+    L("- " + (d.label || "(이름 없음)"));
+    let s; try { s = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: d.deviceId } }, audio: false }); } catch (e) { L("   열기 실패: " + e.name); continue; }
+    const tr = s.getVideoTracks()[0]; await sleep(700); let caps = {}; try { caps = tr.getCapabilities(); } catch (e) { }
+    L("   방향 " + (tr.getSettings().facingMode || "?") + " · 토치 " + (caps.torch === undefined ? "미지원" : "지원") + " · 줌 " + (caps.zoom ? "있음" : "없음"));
+    if (caps.torch) { try { await tr.applyConstraints({ advanced: [{ torch: true }] }); L("   플래시 켜기 요청 성공 (불빛이 보이는지 확인하세요)"); await sleep(1600); await tr.applyConstraints({ advanced: [{ torch: false }] }); } catch (e) { L("   플래시 켜기 실패: " + e.name + " " + (e.message || "")); } }
+    if (window.ImageCapture) { try { const pc = await new ImageCapture(tr).getPhotoCapabilities(); L("   사진 플래시 모드: " + ((pc.fillLightMode || []).join(",") || "없음")); } catch (e) { L("   사진 기능 조회 실패: " + e.name); } }
+    s.getTracks().forEach(x => x.stop());
+  }
+  L("끝. [결과 복사]를 눌러 붙여 넣어 알려 주세요.");
 }
 function stopStream() { if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; } const v = $("#camVideo"); if (v) v.srcObject = null; }
 async function openCam() {
   $("#cam").hidden = false; renderCamStrip();
   try { await startStream(); watchDark(); } catch (e) { closeCam(); toast("카메라를 열지 못했습니다. 권한을 확인하세요."); refreshPerms().then(gateCheck); }
 }
-function closeCam() { clearInterval(darkTimer); S.torch = false; S.torchOk = false; camTrack = null; stopStream(); $("#cam").hidden = true; $("#camHint").hidden = true; $("#torchBtn").hidden = true; renderPhotos(); }
+function closeCam() { clearInterval(darkTimer); S.torch = false; S.torchOk = false; S.shotFlash = false; camTrack = null; stopStream(); $("#cam").hidden = true; $("#camHint").hidden = true; $("#torchBtn").hidden = true; renderPhotos(); }
 function renderCamStrip() {
   $("#camCnt").textContent = S.photos.length + "장";
   $("#camStrip").innerHTML = S.photos.slice(-5).map(p => '<img src="' + p.thumb + '" alt="">').join("");
@@ -475,7 +531,12 @@ async function pushPhoto(src, w0, h0, taken, origin) { // 카메라 프레임·�
 }
 async function shotOnce() {
   const v = $("#camVideo"); if (!v.videoWidth) { toast("카메라 화면이 아직 준비되지 않았습니다."); return; }
-  await pushPhoto(v, v.videoWidth, v.videoHeight, nowIso(), "camera");
+  let done = false;
+  if (S.shotFlash && S.torch && camTrack) {
+    try { const blob = await new ImageCapture(camTrack).takePhoto({ fillLightMode: "flash" }); const bmp = await createImageBitmap(blob, { imageOrientation: "from-image" }); await pushPhoto(bmp, bmp.width, bmp.height, nowIso(), "camera"); if (bmp.close) bmp.close(); done = true; }
+    catch (e) { toast("플래시 촬영에 실패해 일반 촬영으로 저장합니다."); }
+  }
+  if (!done) await pushPhoto(v, v.videoWidth, v.videoHeight, nowIso(), "camera");
   const f = $("#camFlash"); f.classList.remove("go"); void f.offsetWidth; f.classList.add("go");
   renderCamStrip();
 }
@@ -641,6 +702,7 @@ async function renderSet() {
     '<div class="card"><h2>내보내기·백업</h2><div class="row"><button class="btn sm" data-act="expCsv">엑셀용 CSV</button><button class="btn sm" data-act="expJson">JSON</button>' +
     '<label class="row mut" style="gap:6px"><input type="checkbox" id="expPhotos"> JSON에 사진 포함(용량이 커짐)</label></div>' +
     '<p class="note">기록은 이 기기에만 있습니다. 브라우저 데이터를 지우거나 앱을 삭제하면 사라지므로 중요한 기록은 내보내 두세요.</p></div>' +
+    '<div class="card"><h2>카메라·플래시 진단</h2><div class="row"><button class="btn sm" data-act="diag">진단 실행</button><button class="btn sm" id="diagCopy" data-act="diagCopy" hidden>결과 복사</button></div><pre id="diagOut" hidden style="white-space:pre-wrap;word-break:break-all;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:12px;margin:8px 0 0"></pre><p class="note">플래시가 안 켜질 때 눌러 보세요. 카메라마다 플래시 지원 여부를 확인하고 켜 봅니다(1~2초 불이 켜질 수 있음).</p></div>' +
     '<div class="card"><h2>저장 공간</h2><div class="kvs"><span>사용량</span><span>' + esc(usage || "확인할 수 없음") + '</span><span>보호 상태</span><span>' + esc(persisted || "확인할 수 없음") + '</span></div></div>' +
     '<div class="card"><h2>분류 방식</h2><p class="note" style="margin:0">키워드 규칙으로 코멘트를 나누고 유형(12종)·조치 협력사(8곳)·위치 메모를 제안합니다. LLM이 아니며 기기 안에서 실행됩니다. 신뢰도는 규칙 종류별 고정값이고, ' + Math.round(MIN_CONF * 100) + '% 미만은 확인해야 저장할 수 있습니다. 부정 표현("누설 없음")이나 \'미흡\' 같은 표현은 아직 처리하지 못합니다.</p></div>' +
     '<div class="card"><h2>데이터 삭제</h2><div class="row"><button class="btn sm rec" data-act="wipe" id="wipeBtn">저장한 코멘트 전체 삭제</button></div><p class="note">삭제하면 되돌릴 수 없습니다. 먼저 내보내기를 권장합니다.</p></div>' +
@@ -790,6 +852,8 @@ document.addEventListener("click", async e => {
   else if (a === "locType") { S.ctx.locType = b.dataset.v; S.ctx.loc = ""; lsSet("ctx", S.ctx); renderCtx(); }
   else if (a === "src") { S.ctx.source = b.dataset.v; lsSet("ctx", S.ctx); renderCtx(); }
   else if (a === "openCam") openCam();
+  else if (a === "diag") runDiag();
+  else if (a === "diagCopy") { try { await navigator.clipboard.writeText($("#diagOut").textContent); toast("복사했습니다."); } catch (e) { toast("복사하지 못했습니다. 화면을 캡처해 주세요."); } }
   else if (a === "pickPhoto") $("#pickFile").click();
   else if (a === "torch") setTorch(!S.torch);
   else if (a === "shot") shot();
