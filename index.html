@@ -96,6 +96,8 @@ textarea.txt{width:100%;min-height:92px;padding:10px;border:1px solid var(--line
 .shutter{width:76px;height:76px;border-radius:50%;border:5px solid #fff;background:rgba(255,255,255,.25);cursor:pointer;padding:0}
 .shutter:active{background:#fff}
 .cam .cnt{font-size:13px}
+.cam .ctl .btn.on{background:#ffd23f;border-color:#ffd23f;color:#111}
+.cam .hint{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);background:rgba(0,0,0,.65);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:99px;padding:6px 14px;font-size:13px;max-width:90%;text-align:center}
 .cam .flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
 .cam .flash.go{animation:fl .18s ease-out}
 @keyframes fl{0%{opacity:.8}100%{opacity:0}}
@@ -135,6 +137,9 @@ textarea.txt{width:100%;min-height:92px;padding:10px;border:1px solid var(--line
       <div class="row">
         <button class="btn p" data-act="openCam">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>카메라로 찍기</button>
+        <button class="btn" data-act="pickPhoto">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 9"/></svg>기존 사진 불러오기</button>
+        <input type="file" id="pickFile" accept="image/*" multiple hidden>
       </div>
       <div class="thumbs" id="thumbs"></div>
 
@@ -163,9 +168,11 @@ textarea.txt{width:100%;min-height:92px;padding:10px;border:1px solid var(--line
 <div class="cam" id="cam" hidden>
   <video id="camVideo" autoplay playsinline muted></video>
   <div class="flash" id="camFlash"></div>
+  <div class="hint" id="camHint" hidden>어두워 보입니다. 플래시를 켜 보세요.</div>
   <div class="strip" id="camStrip"></div>
   <div class="ctl">
     <span class="cnt" id="camCnt">0장</span>
+    <button class="btn" id="torchBtn" data-act="torch" aria-pressed="false" hidden>플래시 꺼짐</button>
     <button class="shutter" data-act="shot" aria-label="사진 찍기"></button>
     <button class="btn" data-act="flip">앞·뒤 전환</button>
     <button class="btn" data-act="closeCam">완료</button>
@@ -176,7 +183,7 @@ textarea.txt{width:100%;min-height:92px;padding:10px;border:1px solid var(--line
 
 <script>
 "use strict";
-const APP_VER = "1.2.1";
+const APP_VER = "1.3.0";
 
 /* ===== 기준 데이터: SEJIN 기본 ITP 마스터의 검사종류 I-01~I-62 (ERP 코드는 쓰지 않는다) ===== */
 const KINDS_RAW = `I-01|STRUCTURE|BLOCK INSPECTION|ASSEMBLY BLOCK
@@ -324,7 +331,8 @@ function classify(text, ctx) {
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const pad = n => String(n).padStart(2, "0");
-const nowIso = () => { const d = new Date(); return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()); };
+const isoOf = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+const nowIso = () => isoOf(new Date());
 const mmdd = iso => iso.slice(5, 7) + "/" + iso.slice(8, 10);
 const kb = n => n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
 let toastT;
@@ -412,18 +420,39 @@ async function askPerm() {
 }
 
 /* ===== 카메라(앱 안에서 직접 촬영) ===== */
-let camStream = null, camFacing = "environment";
+let camStream = null, camFacing = "environment", camTrack = null, darkTimer = null;
 async function startStream() {
   stopStream();
   camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: camFacing }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
   const v = $("#camVideo"); v.srcObject = camStream; try { await v.play(); } catch (e) { }
+  camTrack = camStream.getVideoTracks()[0] || null; S.torch = false; checkTorch();
+}
+/* 플래시(토치): 카메라 권한 안에서 쓰는 기능이라 별도 권한은 없다. 뒷면 카메라 + 지원 기기에서만 버튼이 보인다. */
+function checkTorch() {
+  let ok = false;
+  try { const caps = camTrack && camTrack.getCapabilities ? camTrack.getCapabilities() : {}; ok = !!caps.torch; } catch (e) { }
+  S.torchOk = ok; renderTorch();
+}
+function renderTorch() { const b = $("#torchBtn"); b.hidden = !S.torchOk; b.classList.toggle("on", !!S.torch); b.setAttribute("aria-pressed", S.torch ? "true" : "false"); b.textContent = S.torch ? "플래시 켜짐" : "플래시 꺼짐"; if (S.torch) $("#camHint").hidden = true; }
+async function setTorch(on) {
+  if (!camTrack || !S.torchOk) return;
+  try { await camTrack.applyConstraints({ advanced: [{ torch: on }] }); S.torch = on; }
+  catch (e) { S.torch = false; toast("이 기기에서는 플래시를 켤 수 없습니다."); }
+  renderTorch();
+}
+function watchDark() { // 화면이 어두우면 플래시를 안내한다(1초마다 작은 표본으로 밝기 측정)
+  clearInterval(darkTimer); const c = document.createElement("canvas"); c.width = c.height = 24; const g = c.getContext("2d", { willReadFrequently: true });
+  darkTimer = setInterval(() => {
+    const v = $("#camVideo"); if (!v.videoWidth || !S.torchOk || S.torch) { $("#camHint").hidden = true; return; }
+    try { g.drawImage(v, 0, 0, 24, 24); const d = g.getImageData(0, 0, 24, 24).data; let s = 0; for (let i = 0; i < d.length; i += 4) s += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]; $("#camHint").hidden = s / (d.length / 4) > 45; } catch (e) { }
+  }, 1000);
 }
 function stopStream() { if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; } const v = $("#camVideo"); if (v) v.srcObject = null; }
 async function openCam() {
   $("#cam").hidden = false; renderCamStrip();
-  try { await startStream(); } catch (e) { closeCam(); toast("카메라를 열지 못했습니다. 권한을 확인하세요."); refreshPerms().then(gateCheck); }
+  try { await startStream(); watchDark(); } catch (e) { closeCam(); toast("카메라를 열지 못했습니다. 권한을 확인하세요."); refreshPerms().then(gateCheck); }
 }
-function closeCam() { stopStream(); $("#cam").hidden = true; renderPhotos(); }
+function closeCam() { clearInterval(darkTimer); S.torch = false; S.torchOk = false; camTrack = null; stopStream(); $("#cam").hidden = true; $("#camHint").hidden = true; $("#torchBtn").hidden = true; renderPhotos(); }
 function renderCamStrip() {
   $("#camCnt").textContent = S.photos.length + "장";
   $("#camStrip").innerHTML = S.photos.slice(-5).map(p => '<img src="' + p.thumb + '" alt="">').join("");
@@ -434,17 +463,35 @@ async function shot() {
   if (shooting) return; shooting = true;
   try { await shotOnce(); } finally { shooting = false; }
 }
-async function shotOnce() {
-  const v = $("#camVideo"); if (!v.videoWidth) { toast("카메라 화면이 아직 준비되지 않았습니다."); return; }
-  const w0 = v.videoWidth, h0 = v.videoHeight, sc = Math.min(1, 1600 / Math.max(w0, h0));
+async function pushPhoto(src, w0, h0, taken, origin) { // 카메라 프레임·불러온 사진 모두 긴 변 1600px JPEG와 320px 썸네일로 만든다
+  const sc = Math.min(1, 1600 / Math.max(w0, h0));
   const c = document.createElement("canvas"); c.width = Math.round(w0 * sc); c.height = Math.round(h0 * sc);
-  c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
+  c.getContext("2d").drawImage(src, 0, 0, c.width, c.height);
   const t = document.createElement("canvas"), ts = Math.min(1, 320 / Math.max(c.width, c.height)); t.width = Math.round(c.width * ts); t.height = Math.round(c.height * ts);
   t.getContext("2d").drawImage(c, 0, 0, t.width, t.height);
   const blob = await canvasBlob(c, 0.85);
-  S.photos.push({ id: "ph-" + Date.now().toString(36) + "-" + (++S.pid), blob, thumb: t.toDataURL("image/jpeg", 0.72), w: c.width, h: c.height, size: blob.size, taken_at: nowIso() });
+  if (!blob) throw new Error("encode");
+  S.photos.push({ id: "ph-" + Date.now().toString(36) + "-" + (++S.pid), blob, thumb: t.toDataURL("image/jpeg", 0.72), w: c.width, h: c.height, size: blob.size, taken_at: taken, origin });
+}
+async function shotOnce() {
+  const v = $("#camVideo"); if (!v.videoWidth) { toast("카메라 화면이 아직 준비되지 않았습니다."); return; }
+  await pushPhoto(v, v.videoWidth, v.videoHeight, nowIso(), "camera");
   const f = $("#camFlash"); f.classList.remove("go"); void f.offsetWidth; f.classList.add("go");
   renderCamStrip();
+}
+/* ===== 기존 사진 불러오기(갤러리·파일) ===== */
+async function addFiles(files) {
+  let ok = 0, bad = 0;
+  for (const f of files) {
+    if (!(f.type || "").startsWith("image/") && !/\.(jpe?g|png|webp|gif|bmp|heic|heif)$/i.test(f.name)) { bad++; continue; }
+    try {
+      let bmp; try { bmp = await createImageBitmap(f, { imageOrientation: "from-image" }); } catch (e) { bmp = await createImageBitmap(f); }
+      await pushPhoto(bmp, bmp.width, bmp.height, f.lastModified ? isoOf(new Date(f.lastModified)) : nowIso(), "gallery");
+      if (bmp.close) bmp.close(); ok++;
+    } catch (e) { bad++; }
+  }
+  renderPhotos(); if (S.draft) renderRight();
+  toast(bad ? (ok ? ok + "장을 불러왔고 " + bad + "장은 열 수 없어 건너뛰었습니다." : "사진을 열 수 없습니다. JPEG·PNG 형식인지 확인하세요.") : ok + "장을 불러왔습니다.");
 }
 async function flipCam() { camFacing = camFacing === "environment" ? "user" : "environment"; try { await startStream(); } catch (e) { camFacing = camFacing === "environment" ? "user" : "environment"; try { await startStream(); } catch (e2) { } toast("이 기기에서는 카메라를 전환할 수 없습니다."); } }
 async function showPhoto(id) {
@@ -512,7 +559,7 @@ async function register() {
     out.push({
       id: "CMT-" + batch.toString(36) + "-" + seq, no: c.inspNo ? c.inspNo + "-" + seq : "C-" + at.slice(2, 10).replace(/-/g, "") + "-" + pad(seq), batch, created_at: at, author: c.author || "",
       ship: c.ship, block: c.locType === "BLOCK" ? c.loc || null : null, deck: c.locType === "DECK" ? c.loc || null : null, itr_key: null, inspection_no: c.inspNo || null,
-      source: c.source, photos: S.photos.map(p => ({ id: p.id, thumb: p.thumb, w: p.w, h: p.h, size: p.size, taken_at: p.taken_at })),
+      source: c.source, photos: S.photos.map(p => ({ id: p.id, thumb: p.thumb, w: p.w, h: p.h, size: p.size, taken_at: p.taken_at, origin: p.origin || "camera" })),
       voice: S.rawVoice ? { audio_ref: null, transcript: S.rawVoice, stt_engine: "browser-ko-KR", confidence: conf } : null,
       text_raw: raw, text_final: it.text, lang: /[가-힣]/.test(it.text) ? "ko" : "en",
       type: it.type, action_party: d.partner.value, kind_ids: d.kind ? [d.kind] : [], location_note: d.loc,
@@ -547,8 +594,8 @@ function renderPhotos() {
   $("#thumbs").innerHTML = S.photos.length ? S.photos.map((p, i) =>
     '<div class="th"><img data-act="viewPhoto" data-id="' + p.id + '" src="' + p.thumb + '" alt="현장 사진 ' + (i + 1) + ' 확대">' +
     '<button class="x" data-act="rmPhoto" data-id="' + p.id + '" aria-label="사진 ' + (i + 1) + ' 삭제">×</button>' +
-    '<div class="m"><span>사진 ' + (i + 1) + '</span><span>' + kb(p.size) + '</span></div></div>').join("")
-    : '<div class="empty" style="grid-column:1/-1">사진이 없습니다. [카메라로 찍기]를 누르세요.</div>';
+    '<div class="m"><span>' + (p.origin === "gallery" ? "불러옴 " : "사진 ") + (i + 1) + '</span><span>' + kb(p.size) + '</span></div></div>').join("")
+    : '<div class="empty" style="grid-column:1/-1">사진이 없습니다. [카메라로 찍기] 또는 [기존 사진 불러오기]를 누르세요.</div>';
 }
 function confBar(c) { return '<span class="bar ' + (c < MIN_CONF ? "lo" : "") + '" aria-hidden="true"><i style="width:' + Math.round(c * 100) + '%"></i></span> <span class="mut">' + Math.round(c * 100) + '%</span>'; }
 function renderRight() {
@@ -675,7 +722,7 @@ async function buildPart(recs, idx, total, st) {
     const data = new Uint8Array(await rec.blob.arrayBuffer()), name = "photos/" + asciiName(r.no) + "_p" + (i + 1) + ".jpg";
     names.set(p.id, name); files.push({ name, data });
   }
-  const json = recs.map(r => { const o = Object.assign({}, r); o.photos = r.photos.map(p => ({ file: names.get(p.id), id: p.id, w: p.w, h: p.h, size: p.size, taken_at: p.taken_at })); return o; });
+  const json = recs.map(r => { const o = Object.assign({}, r); o.photos = r.photos.map(p => ({ file: names.get(p.id), id: p.id, w: p.w, h: p.h, size: p.size, taken_at: p.taken_at, origin: p.origin || "camera" })); return o; });
   const q = v => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"';
   const head = ["번호", "일시", "호선", "위치구분", "위치", "검사종류(중)", "발행", "유형", "조치협력사", "내용", "위치메모", "사진파일", "상태", "작성자"];
   const rows = json.map(r => [r.no, r.created_at.replace("T", " "), r.ship, r.block ? "BLOCK" : r.deck ? "DECK" : "", r.block || r.deck || "", r.kind_ids[0] && KIND[r.kind_ids[0]] ? KIND[r.kind_ids[0]].major : "", SOURCES.find(s => s[0] === r.source)[1], r.type, r.action_party, r.text_final, r.location_note, r.photos.map(p => p.file || "(사진 없음)").join(" ; "), r.status, r.author].map(q).join(","));
@@ -743,6 +790,8 @@ document.addEventListener("click", async e => {
   else if (a === "locType") { S.ctx.locType = b.dataset.v; S.ctx.loc = ""; lsSet("ctx", S.ctx); renderCtx(); }
   else if (a === "src") { S.ctx.source = b.dataset.v; lsSet("ctx", S.ctx); renderCtx(); }
   else if (a === "openCam") openCam();
+  else if (a === "pickPhoto") $("#pickFile").click();
+  else if (a === "torch") setTorch(!S.torch);
   else if (a === "shot") shot();
   else if (a === "flip") flipCam();
   else if (a === "closeCam") closeCam();
@@ -791,6 +840,7 @@ document.addEventListener("change", e => {
   else if (t.dataset.f === "itype") { const it = d.items[+t.dataset.i]; it.type = t.value; it.ok = true; renderRight(); }
   else if (t.dataset.f === "kind") d.kind = t.value;
 });
+$("#pickFile").addEventListener("change", e => { const fs = Array.from(e.target.files || []); e.target.value = ""; if (fs.length) addFiles(fs); });
 $("#installBtn").addEventListener("click", () => showTab("set"));
 window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); S.installEv = e; $("#installBtn").hidden = false; if (S.tab === "set") renderSet(); });
 window.addEventListener("appinstalled", () => { S.installEv = null; $("#installBtn").hidden = true; toast("앱이 설치되었습니다."); });
