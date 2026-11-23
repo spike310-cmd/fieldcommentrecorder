@@ -97,12 +97,13 @@ textarea.txt{width:100%;min-height:92px;padding:10px;border:1px solid var(--line
 .shutter:active{background:#fff}
 .cam .cnt{font-size:13px}
 .cam .ctl .btn.on{background:#ffd23f;border-color:#ffd23f;color:#111}
-.cam .hint{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);background:rgba(0,0,0,.65);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:99px;padding:6px 14px;font-size:13px;max-width:90%;text-align:center}
+.cam .hint{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%) rotate(var(--rot,0deg));transition:transform .25s;background:rgba(0,0,0,.65);color:#fff;border:1px solid rgba(255,255,255,.4);border-radius:99px;padding:6px 14px;font-size:13px;max-width:90%;text-align:center}
 .cam .flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
 .cam .flash.go{animation:fl .18s ease-out}
 @keyframes fl{0%{opacity:.8}100%{opacity:0}}
 .cam .strip{position:absolute;left:10px;bottom:10px;display:flex;gap:6px;max-width:60%}
 .cam .strip img{width:54px;height:40px;object-fit:cover;border-radius:6px;border:2px solid #fff}
+.cam .ctl>:not(.cnt){transform:rotate(var(--rot,0deg));transition:transform .25s}.cam .ctl .shutter{transform:none}.cam .cnt i{display:inline-block;font-style:normal;transform:rotate(var(--rot,0deg));transition:transform .25s}
 @media(orientation:portrait){.cam{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) auto}.cam .ctl{flex-direction:row;flex-wrap:wrap;justify-content:center;gap:10px 12px;padding:12px 12px calc(12px + env(safe-area-inset-bottom,0px))}.cam .ctl .shutter{order:-1;margin:0 calc(50% - 38px)}.cam .ctl .cnt{order:-2;flex:0 0 100%;text-align:center}.cam .ctl .btn{min-width:84px;padding:0 10px}.cam .strip{bottom:190px}}
 @media(orientation:landscape) and (max-height:430px){.cam .ctl{gap:8px;padding:8px 14px}.cam .ctl .btn{min-height:36px}}
 .lb{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:150;display:grid;place-items:center;padding:12px}
@@ -172,7 +173,7 @@ textarea.txt{width:100%;min-height:92px;padding:10px;border:1px solid var(--line
   <div class="hint" id="camHint" hidden>어두워 보입니다. 플래시를 켜 보세요.</div>
   <div class="strip" id="camStrip"></div>
   <div class="ctl">
-    <span class="cnt" id="camCnt">0장</span>
+    <span class="cnt"><i id="camCnt">0장</i></span>
     <button class="btn" id="torchBtn" data-act="torch" aria-pressed="false" hidden>플래시 꺼짐</button>
     <button class="shutter" data-act="shot" aria-label="사진 찍기"></button>
     <button class="btn" data-act="flip">앞·뒤 전환</button>
@@ -184,7 +185,7 @@ textarea.txt{width:100%;min-height:92px;padding:10px;border:1px solid var(--line
 
 <script>
 "use strict";
-const APP_VER = "1.3.2";
+const APP_VER = "1.4.0";
 
 /* ===== 기준 데이터: SEJIN 기본 ITP 마스터의 검사종류 I-01~I-62 (ERP 코드는 쓰지 않는다) ===== */
 const KINDS_RAW = `I-01|STRUCTURE|BLOCK INSPECTION|ASSEMBLY BLOCK
@@ -505,11 +506,42 @@ async function runDiag() {
   L("끝. [결과 복사]를 눌러 붙여 넣어 알려 주세요.");
 }
 function stopStream() { if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; } const v = $("#camVideo"); if (v) v.srcObject = null; }
+/* ===== 카메라 방향 자동 감지 =====
+   폰 화면 회전이 잠겨 있어도 기울기 센서로 실제 들고 있는 방향을 알아내
+   ① 버튼 글자를 눕힌 방향에 맞춰 돌리고 ② 저장하는 사진을 똑바로 세워 가로/세로로 저장한다. */
+let phys = 0, motionOn = false, lastAcc = null;
+const screenAngle = () => { const a = (screen.orientation && typeof screen.orientation.angle === "number") ? screen.orientation.angle : (typeof window.orientation === "number" ? window.orientation : 0); return ((a % 360) + 360) % 360; };
+function camRel() { if (lsGet("camRot", "auto") !== "auto" || !motionOn) return 0; const r = (phys - screenAngle() + 360) % 360; return r === 90 || r === 270 ? r : 0; }
+function applyCamRot() { const r = camRel(); $("#cam").style.setProperty("--rot", (r === 90 ? 90 : r === 270 ? -90 : 0) + "deg"); }
+function physFrom(x, y, prev) { // 0=세로 90=왼쪽으로 눕힘(윗면이 왼쪽) 270=오른쪽으로 눕힘. 거꾸로(180)·평평하게 둔 경우는 이전 값을 유지한다
+  const ax = Math.abs(x), ay = Math.abs(y);
+  if (ax > 6.5 && ax > ay + 2) return x > 0 ? 90 : 270;
+  if (ay > 6.5 && ay > ax + 2 && y > 0) return 0;
+  return prev;
+}
+function onMotion(e) {
+  const a = e.accelerationIncludingGravity; if (!a || a.x == null || a.y == null) return;
+  const x = lsGet("camFlip", false) ? -a.x : a.x;
+  lastAcc = { x: a.x, y: a.y, z: a.z }; motionOn = true;
+  const p = physFrom(x, a.y, phys); if (p !== phys) { phys = p; applyCamRot(); }
+}
+function startMotion() { phys = 0; motionOn = false; window.addEventListener("devicemotion", onMotion); applyCamRot(); }
+function stopMotion() { window.removeEventListener("devicemotion", onMotion); motionOn = false; phys = 0; const c = $("#cam"); if (c) c.style.setProperty("--rot", "0deg"); }
+window.addEventListener("orientationchange", () => { if (!$("#cam").hidden) applyCamRot(); });
+if (screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener("change", () => { if (!$("#cam").hidden) applyCamRot(); });
+function runSensor() { // 설정 탭: 5초 동안 센서 값을 보여 준다
+  const out = $("#sensorOut"); out.hidden = false; let n = 0, ph = 0, seen = false;
+  const f = e => { const a = e.accelerationIncludingGravity; if (!a || a.x == null) return; seen = true; const x = lsGet("camFlip", false) ? -a.x : a.x; ph = physFrom(x, a.y, ph); n++;
+    out.textContent = "센서 값  x=" + a.x.toFixed(1) + "  y=" + a.y.toFixed(1) + "  z=" + (a.z || 0).toFixed(1) + "\n화면 각도 " + screenAngle() + "°\n인식: " + (ph === 90 ? "왼쪽으로 눕혀 듦(윗면이 왼쪽)" : ph === 270 ? "오른쪽으로 눕혀 듦(윗면이 오른쪽)" : "세로로 듦") + "\n폰을 좌우로 눕혀 보세요 (5초)"; };
+  window.addEventListener("devicemotion", f);
+  out.textContent = "센서 값을 기다리는 중…";
+  setTimeout(() => { window.removeEventListener("devicemotion", f); if (!seen) out.textContent = "센서 값을 받지 못했습니다. 이 폰에서는 자동 방향을 쓸 수 없고, 화면 회전을 따릅니다."; else out.textContent += "\n(끝)"; }, 5000);
+}
 async function openCam() {
-  $("#cam").hidden = false; renderCamStrip();
+  $("#cam").hidden = false; renderCamStrip(); startMotion();
   try { await startStream(); watchDark(); } catch (e) { closeCam(); toast("카메라를 열지 못했습니다. 권한을 확인하세요."); refreshPerms().then(gateCheck); }
 }
-function closeCam() { clearInterval(darkTimer); S.torch = false; S.torchOk = false; S.shotFlash = false; camTrack = null; stopStream(); $("#cam").hidden = true; $("#camHint").hidden = true; $("#torchBtn").hidden = true; renderPhotos(); }
+function closeCam() { stopMotion(); clearInterval(darkTimer); S.torch = false; S.torchOk = false; S.shotFlash = false; camTrack = null; stopStream(); $("#cam").hidden = true; $("#camHint").hidden = true; $("#torchBtn").hidden = true; renderPhotos(); }
 function renderCamStrip() {
   $("#camCnt").textContent = S.photos.length + "장";
   $("#camStrip").innerHTML = S.photos.slice(-5).map(p => '<img src="' + p.thumb + '" alt="">').join("");
@@ -520,10 +552,13 @@ async function shot() {
   if (shooting) return; shooting = true;
   try { await shotOnce(); } finally { shooting = false; }
 }
-async function pushPhoto(src, w0, h0, taken, origin) { // 카메라 프레임·불러온 사진 모두 긴 변 1600px JPEG와 320px 썸네일로 만든다
-  const sc = Math.min(1, 1600 / Math.max(w0, h0));
-  const c = document.createElement("canvas"); c.width = Math.round(w0 * sc); c.height = Math.round(h0 * sc);
-  c.getContext("2d").drawImage(src, 0, 0, c.width, c.height);
+async function pushPhoto(src, w0, h0, taken, origin, rot) { // 카메라 프레임·불러온 사진 모두 긴 변 1600px JPEG와 320px 썸네일로 만든다. rot=시계 방향으로 돌릴 각도(0/90/270)
+  rot = rot || 0; const sw = rot ? h0 : w0, sh = rot ? w0 : h0;
+  const sc = Math.min(1, 1600 / Math.max(sw, sh));
+  const c = document.createElement("canvas"); c.width = Math.round(sw * sc); c.height = Math.round(sh * sc);
+  const g = c.getContext("2d");
+  if (rot) { g.translate(c.width / 2, c.height / 2); g.rotate(rot * Math.PI / 180); g.drawImage(src, -w0 * sc / 2, -h0 * sc / 2, w0 * sc, h0 * sc); }
+  else g.drawImage(src, 0, 0, c.width, c.height);
   const t = document.createElement("canvas"), ts = Math.min(1, 320 / Math.max(c.width, c.height)); t.width = Math.round(c.width * ts); t.height = Math.round(c.height * ts);
   t.getContext("2d").drawImage(c, 0, 0, t.width, t.height);
   const blob = await canvasBlob(c, 0.85);
@@ -532,12 +567,13 @@ async function pushPhoto(src, w0, h0, taken, origin) { // 카메라 프레임·�
 }
 async function shotOnce() {
   const v = $("#camVideo"); if (!v.videoWidth) { toast("카메라 화면이 아직 준비되지 않았습니다."); return; }
+  const rot = (360 - camRel()) % 360; // 폰을 눕혀 든 만큼 반대로 돌려 사진을 똑바로 세운다
   let done = false;
   if (S.shotFlash && S.torch && camTrack) {
-    try { const blob = await new ImageCapture(camTrack).takePhoto({ fillLightMode: "flash" }); const bmp = await createImageBitmap(blob, { imageOrientation: "from-image" }); await pushPhoto(bmp, bmp.width, bmp.height, nowIso(), "camera"); if (bmp.close) bmp.close(); done = true; }
+    try { const blob = await new ImageCapture(camTrack).takePhoto({ fillLightMode: "flash" }); const bmp = await createImageBitmap(blob, { imageOrientation: "from-image" }); await pushPhoto(bmp, bmp.width, bmp.height, nowIso(), "camera", rot && bmp.height > bmp.width ? rot : 0); if (bmp.close) bmp.close(); done = true; }
     catch (e) { toast("플래시 촬영에 실패해 일반 촬영으로 저장합니다."); }
   }
-  if (!done) await pushPhoto(v, v.videoWidth, v.videoHeight, nowIso(), "camera");
+  if (!done) await pushPhoto(v, v.videoWidth, v.videoHeight, nowIso(), "camera", rot);
   const f = $("#camFlash"); f.classList.remove("go"); void f.offsetWidth; f.classList.add("go");
   renderCamStrip();
 }
@@ -703,6 +739,9 @@ async function renderSet() {
     '<div class="card"><h2>내보내기·백업</h2><div class="row"><button class="btn sm" data-act="expCsv">엑셀용 CSV</button><button class="btn sm" data-act="expJson">JSON</button>' +
     '<label class="row mut" style="gap:6px"><input type="checkbox" id="expPhotos"> JSON에 사진 포함(용량이 커짐)</label></div>' +
     '<p class="note">기록은 이 기기에만 있습니다. 브라우저 데이터를 지우거나 앱을 삭제하면 사라지므로 중요한 기록은 내보내 두세요.</p></div>' +
+    '<div class="card"><h2>카메라 방향</h2><div class="row"><button class="chip ' + (lsGet("camRot", "auto") === "auto" ? "on" : "") + '" data-act="camRot" data-v="auto" aria-pressed="' + (lsGet("camRot", "auto") === "auto") + '">자동(센서)</button><button class="chip ' + (lsGet("camRot", "auto") === "off" ? "on" : "") + '" data-act="camRot" data-v="off" aria-pressed="' + (lsGet("camRot", "auto") === "off") + '">화면 회전만 따름</button></div>' +
+    '<div class="row" style="margin-top:8px"><label class="row mut" style="gap:6px"><input type="checkbox" id="camFlip"' + (lsGet("camFlip", false) ? " checked" : "") + '> 좌우가 반대로 돌면 체크</label><button class="btn sm" data-act="sensor">센서 확인</button></div><pre id="sensorOut" hidden style="white-space:pre-wrap;word-break:break-all;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:12px;margin:8px 0 0"></pre>' +
+    '<p class="note">자동일 때는 폰 화면 회전이 잠겨 있어도, 폰을 옆으로 눕혀 들면 카메라 버튼 글자가 돌아가고 사진이 가로로 저장됩니다. 사진이 옆으로 누워 저장되면 ‘좌우가 반대로 돌면 체크’를 눌러 보세요.</p></div>' +
     '<div class="card"><h2>카메라·플래시 진단</h2><div class="row"><button class="btn sm" data-act="diag">진단 실행</button><button class="btn sm" id="diagCopy" data-act="diagCopy" hidden>결과 복사</button></div><pre id="diagOut" hidden style="white-space:pre-wrap;word-break:break-all;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:12px;margin:8px 0 0"></pre><p class="note">플래시가 안 켜질 때 눌러 보세요. 카메라마다 플래시 지원 여부를 확인하고 켜 봅니다(1~2초 불이 켜질 수 있음).</p></div>' +
     '<div class="card"><h2>저장 공간</h2><div class="kvs"><span>사용량</span><span>' + esc(usage || "확인할 수 없음") + '</span><span>보호 상태</span><span>' + esc(persisted || "확인할 수 없음") + '</span></div></div>' +
     '<div class="card"><h2>분류 방식</h2><p class="note" style="margin:0">키워드 규칙으로 코멘트를 나누고 유형(12종)·조치 협력사(8곳)·위치 메모를 제안합니다. LLM이 아니며 기기 안에서 실행됩니다. 신뢰도는 규칙 종류별 고정값이고, ' + Math.round(MIN_CONF * 100) + '% 미만은 확인해야 저장할 수 있습니다. 부정 표현("누설 없음")이나 \'미흡\' 같은 표현은 아직 처리하지 못합니다.</p></div>' +
@@ -815,14 +854,16 @@ async function markPackaged(pk, how) {
   for (const id of pk.ids) { const r = S.records.find(x => x.id === id); if (r) { r.packaged_at = at; try { await DB.put("records", r); } catch (e) { } } }
   pk.done = how + " " + at.slice(11, 16); renderList();
 }
-function sendPkg(i) { // 공유 창(메일·메신저 선택). 지원하지 않는 기기는 저장으로 대체한다. 사용자 터치 직후 바로 호출해야 한다.
+function sendPkg(i) { // 공유 창(카카오톡·메일 등). 크롬은 zip 공유를 막아서, 안 되면 이름 끝에 .txt를 붙여 보낸다. 사용자 터치 직후 바로 호출해야 한다.
   const pk = S.pkgs[i]; if (!pk) return;
-  const file = new File([pk.blob], pk.name, { type: "application/zip" });
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    navigator.share({ files: [file], title: "현장 코멘트 패키지", text: "코멘트 " + pk.records + "건 · 사진 " + pk.photos + "장" })
-      .then(() => markPackaged(pk, "공유 창 열림"))
-      .catch(e => { if (e && e.name !== "AbortError") { toast("공유하지 못해 파일로 저장합니다."); savePkg(i); } });
-  } else { toast("이 기기는 공유 창을 지원하지 않아 파일로 저장합니다."); savePkg(i); }
+  const zip = new File([pk.blob], pk.name, { type: "application/zip" });
+  const txt = new File([pk.blob], pk.name + ".txt", { type: "text/plain" });
+  const can = f => { try { return !!(navigator.canShare && navigator.canShare({ files: [f] })); } catch (e) { return false; } };
+  const f = can(zip) ? zip : can(txt) ? txt : null, asTxt = f === txt;
+  if (!f || !navigator.share) { toast("이 기기는 공유 창을 지원하지 않아 파일로 저장합니다."); savePkg(i); return; }
+  navigator.share({ files: [f], title: "현장 코멘트 패키지 " + pk.records + "건" })
+    .then(() => { markPackaged(pk, asTxt ? "공유 창 열림(.txt)" : "공유 창 열림"); if (asTxt) toast("받는 쪽에서 파일 이름 끝의 .txt를 지우면 zip으로 열립니다."); })
+    .catch(e => { if (e && e.name !== "AbortError") { toast("공유하지 못해 파일로 저장합니다."); savePkg(i); } });
 }
 function savePkg(i) { const pk = S.pkgs[i]; if (!pk) return; download(pk.name, pk.blob); markPackaged(pk, "저장"); }
 function pkgBarHtml() {
@@ -832,7 +873,7 @@ function pkgBarHtml() {
     '<div class="row" style="margin-top:8px"><label class="f" style="min-width:170px">파일 하나의 최대 크기<select class="in" id="pkgLimit">' + [["10", "10 MB"], ["20", "20 MB (메일 권장)"], ["25", "25 MB"], ["0", "나누지 않음"]].map(o => '<option value="' + o[0] + '"' + (lim === o[0] ? " selected" : "") + '>' + o[1] + '</option>').join("") + '</select></label>' +
     '<button class="btn p" id="pkgBtn" data-act="mkPkg" style="margin-top:15px">패키지 만들기</button></div>' +
     '<div id="pkgOut"></div>' +
-    '<p class="note">암호는 걸리지 않습니다. 받는 사람이 사내 PC에서 압축을 풀면 comments.csv(엑셀용)·comments.json(업로드용)·photos 폴더·manifest.json(파일별 해시)이 나옵니다. 용량을 넘으면 여러 파일로 나뉩니다. 공유 창이 열렸다는 것만 알 수 있고, 실제로 전송됐는지는 확인되지 않습니다.</p></div>';
+    '<p class="note">암호는 걸리지 않습니다. 받는 사람이 사내 PC에서 압축을 풀면 comments.csv(엑셀용)·comments.json(업로드용)·photos 폴더·manifest.json(파일별 해시)이 나옵니다. 용량을 넘으면 여러 파일로 나뉩니다. 공유 창이 열렸다는 것만 알 수 있고, 실제로 전송됐는지는 확인되지 않습니다.</p><p class="note"><b>보내기</b>: 카카오톡·메일 등을 고르는 공유 창이 열립니다. 크롬이 zip 공유를 막아서 파일 이름 끝에 <b>.txt</b>가 붙으니, 받는 쪽에서 .txt를 지우면 zip입니다. <b>저장</b>: 폰에 zip 그대로 저장하며, ‘내 파일’ 앱에서 길게 눌러 공유할 수도 있습니다.</p></div>';
 }
 function updatePkgBtn() { const b = $("#pkgBtn"); if (!b) return; const n = S.records.filter(r => S.sel.has(r.id)).length; b.textContent = S.pkgBusy ? "만드는 중…" : n ? "선택한 " + n + "건 패키지 만들기" : "패키지 만들기"; b.disabled = S.pkgBusy || !n; }
 function renderPkgOut() {
@@ -854,6 +895,8 @@ document.addEventListener("click", async e => {
   else if (a === "src") { S.ctx.source = b.dataset.v; lsSet("ctx", S.ctx); renderCtx(); }
   else if (a === "openCam") openCam();
   else if (a === "diag") runDiag();
+  else if (a === "camRot") { lsSet("camRot", b.dataset.v); renderSet(); }
+  else if (a === "sensor") runSensor();
   else if (a === "diagCopy") { try { await navigator.clipboard.writeText($("#diagOut").textContent); toast("복사했습니다."); } catch (e) { toast("복사하지 못했습니다. 화면을 캡처해 주세요."); } }
   else if (a === "pickPhoto") $("#pickFile").click();
   else if (a === "torch") setTorch(!S.torch);
@@ -900,6 +943,7 @@ document.addEventListener("input", e => {
 });
 document.addEventListener("change", e => {
   const t = e.target, d = S.draft;
+  if (t.id === "camFlip") { lsSet("camFlip", t.checked); return; }
   if (t.dataset.c === "kind") { S.ctx.kind = t.value; lsSet("ctx", S.ctx); }
   else if (!d) return;
   else if (t.dataset.f === "itype") { const it = d.items[+t.dataset.i]; it.type = t.value; it.ok = true; renderRight(); }
