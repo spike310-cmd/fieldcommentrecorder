@@ -185,7 +185,7 @@ textarea.txt{width:100%;min-height:92px;padding:10px;border:1px solid var(--line
 
 <script>
 "use strict";
-const APP_VER = "1.4.0";
+const APP_VER = "1.4.1";
 
 /* ===== 기준 데이터: SEJIN 기본 ITP 마스터의 검사종류 I-01~I-62 (ERP 코드는 쓰지 않는다) ===== */
 const KINDS_RAW = `I-01|STRUCTURE|BLOCK INSPECTION|ASSEMBLY BLOCK
@@ -742,6 +742,7 @@ async function renderSet() {
     '<div class="card"><h2>카메라 방향</h2><div class="row"><button class="chip ' + (lsGet("camRot", "auto") === "auto" ? "on" : "") + '" data-act="camRot" data-v="auto" aria-pressed="' + (lsGet("camRot", "auto") === "auto") + '">자동(센서)</button><button class="chip ' + (lsGet("camRot", "auto") === "off" ? "on" : "") + '" data-act="camRot" data-v="off" aria-pressed="' + (lsGet("camRot", "auto") === "off") + '">화면 회전만 따름</button></div>' +
     '<div class="row" style="margin-top:8px"><label class="row mut" style="gap:6px"><input type="checkbox" id="camFlip"' + (lsGet("camFlip", false) ? " checked" : "") + '> 좌우가 반대로 돌면 체크</label><button class="btn sm" data-act="sensor">센서 확인</button></div><pre id="sensorOut" hidden style="white-space:pre-wrap;word-break:break-all;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:12px;margin:8px 0 0"></pre>' +
     '<p class="note">자동일 때는 폰 화면 회전이 잠겨 있어도, 폰을 옆으로 눕혀 들면 카메라 버튼 글자가 돌아가고 사진이 가로로 저장됩니다. 사진이 옆으로 누워 저장되면 ‘좌우가 반대로 돌면 체크’를 눌러 보세요.</p></div>' +
+    '<div class="card"><h2>공유 시험</h2><div class="row"><button class="btn sm" data-act="shareDiag">공유 시험</button><button class="btn sm" id="shareCopy" data-act="shareCopy" hidden>결과 복사</button></div><pre id="shareOut" hidden style="white-space:pre-wrap;word-break:break-all;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:12px;margin:8px 0 0"></pre><p class="note">[보내기]로 공유 창이 안 열릴 때 눌러 보세요. 이 폰에서 어떤 파일 형식이 공유되는지 확인합니다(작은 시험 파일로 공유 창이 한 번 열릴 수 있음).</p></div>' +
     '<div class="card"><h2>카메라·플래시 진단</h2><div class="row"><button class="btn sm" data-act="diag">진단 실행</button><button class="btn sm" id="diagCopy" data-act="diagCopy" hidden>결과 복사</button></div><pre id="diagOut" hidden style="white-space:pre-wrap;word-break:break-all;background:var(--code);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:12px;margin:8px 0 0"></pre><p class="note">플래시가 안 켜질 때 눌러 보세요. 카메라마다 플래시 지원 여부를 확인하고 켜 봅니다(1~2초 불이 켜질 수 있음).</p></div>' +
     '<div class="card"><h2>저장 공간</h2><div class="kvs"><span>사용량</span><span>' + esc(usage || "확인할 수 없음") + '</span><span>보호 상태</span><span>' + esc(persisted || "확인할 수 없음") + '</span></div></div>' +
     '<div class="card"><h2>분류 방식</h2><p class="note" style="margin:0">키워드 규칙으로 코멘트를 나누고 유형(12종)·조치 협력사(8곳)·위치 메모를 제안합니다. LLM이 아니며 기기 안에서 실행됩니다. 신뢰도는 규칙 종류별 고정값이고, ' + Math.round(MIN_CONF * 100) + '% 미만은 확인해야 저장할 수 있습니다. 부정 표현("누설 없음")이나 \'미흡\' 같은 표현은 아직 처리하지 못합니다.</p></div>' +
@@ -854,18 +855,33 @@ async function markPackaged(pk, how) {
   for (const id of pk.ids) { const r = S.records.find(x => x.id === id); if (r) { r.packaged_at = at; try { await DB.put("records", r); } catch (e) { } } }
   pk.done = how + " " + at.slice(11, 16); renderList();
 }
+const errTxt = e => (e && e.name ? e.name : "오류") + (e && e.message ? ": " + String(e.message).slice(0, 70) : "");
 function sendPkg(i) { // 공유 창(카카오톡·메일 등). 크롬은 zip 공유를 막아서, 안 되면 이름 끝에 .txt를 붙여 보낸다. 사용자 터치 직후 바로 호출해야 한다.
   const pk = S.pkgs[i]; if (!pk) return;
   const zip = new File([pk.blob], pk.name, { type: "application/zip" });
   const txt = new File([pk.blob], pk.name + ".txt", { type: "text/plain" });
   const can = f => { try { return !!(navigator.canShare && navigator.canShare({ files: [f] })); } catch (e) { return false; } };
   const f = can(zip) ? zip : can(txt) ? txt : null, asTxt = f === txt;
-  if (!f || !navigator.share) { toast("이 기기는 공유 창을 지원하지 않아 파일로 저장합니다."); savePkg(i); return; }
+  if (!navigator.share || !navigator.canShare) { toast("이 크롬은 공유 기능이 없어 파일로 저장합니다."); savePkg(i, "공유 미지원→저장"); return; }
+  if (!f) { toast("이 기기·크롬이 이 파일의 공유를 허용하지 않아 파일로 저장합니다. 설정 탭의 [공유 시험]을 눌러 결과를 알려 주세요."); savePkg(i, "공유 거부→저장"); return; }
   navigator.share({ files: [f], title: "현장 코멘트 패키지 " + pk.records + "건" })
     .then(() => { markPackaged(pk, asTxt ? "공유 창 열림(.txt)" : "공유 창 열림"); if (asTxt) toast("받는 쪽에서 파일 이름 끝의 .txt를 지우면 zip으로 열립니다."); })
-    .catch(e => { if (e && e.name !== "AbortError") { toast("공유하지 못해 파일로 저장합니다."); savePkg(i); } });
+    .catch(e => { if (e && e.name === "AbortError") return; const m = errTxt(e); toast("공유 실패(" + m + ") → 파일로 저장합니다."); savePkg(i, "공유 실패(" + (e && e.name || "?") + ")→저장"); });
 }
-function savePkg(i) { const pk = S.pkgs[i]; if (!pk) return; download(pk.name, pk.blob); markPackaged(pk, "저장"); }
+async function runShareDiag() { // 설정 탭: 이 기기에서 공유가 어디까지 되는지 확인한다(버튼을 누른 직후 작은 txt 파일로 실제 공유도 시도)
+  const out = $("#shareOut"); out.hidden = false; $("#shareCopy").hidden = false;
+  const L = []; const w = s => { L.push(s); out.textContent = L.join("\n"); };
+  w("앱 " + APP_VER + " · " + (location.protocol === "https:" ? "https" : location.protocol) + " · " + (matchMedia("(display-mode: standalone)").matches ? "설치된 앱" : "브라우저"));
+  w("navigator.share: " + (navigator.share ? "있음" : "없음") + " / canShare: " + (navigator.canShare ? "있음" : "없음"));
+  w("UA: " + navigator.userAgent.replace(/^Mozilla\/5\.0 /, "").slice(0, 90));
+  const mk = (n, ty) => new File([new Uint8Array([80, 75, 3, 4, 1, 2, 3])], n, { type: ty });
+  const tests = [["zip", "t.zip", "application/zip"], ["zip(octet)", "t.zip", "application/octet-stream"], ["zip.txt", "t.zip.txt", "text/plain"], ["txt", "t.txt", "text/plain"], ["csv", "t.csv", "text/csv"], ["jpg", "t.jpg", "image/jpeg"], ["pdf", "t.pdf", "application/pdf"]];
+  for (const [lab, n, ty] of tests) { let r; try { r = navigator.canShare ? (navigator.canShare({ files: [mk(n, ty)] }) ? "가능" : "거부") : "판단 불가"; } catch (e) { r = "오류 " + errTxt(e); } w("canShare " + lab + " → " + r); }
+  if (S.pkgs.length) { const pk = S.pkgs[S.pkgs.length - 1]; for (const [lab, n, ty] of [["패키지.zip", pk.name, "application/zip"], ["패키지.zip.txt", pk.name + ".txt", "text/plain"]]) { let r; try { r = navigator.canShare && navigator.canShare({ files: [new File([pk.blob], n, { type: ty })] }) ? "가능" : "거부"; } catch (e) { r = "오류 " + errTxt(e); } w("canShare " + lab + " (" + kb(pk.size) + ") → " + r); } }
+  if (navigator.share) { w("실제 공유 시험: 작은 txt 파일…"); try { await navigator.share({ files: [mk("test.zip.txt", "text/plain")], title: "공유 시험" }); w("→ 공유 창이 열렸습니다(성공)"); } catch (e) { w("→ " + (e && e.name === "AbortError" ? "공유 창을 닫음(창은 열림)" : "실패 " + errTxt(e))); } }
+  w("끝. [결과 복사]를 눌러 붙여 넣어 알려 주세요.");
+}
+function savePkg(i, how) { const pk = S.pkgs[i]; if (!pk) return; download(pk.name, pk.blob); markPackaged(pk, how || "저장"); }
 function pkgBarHtml() {
   const lim = lsGet("pkgLimit", "20");
   return '<div class="card" id="pkgCard"><h2>패키지로 묶어 보내기 <span class="mut">사진 + 코멘트를 zip 한 파일로</span></h2>' +
@@ -895,6 +911,8 @@ document.addEventListener("click", async e => {
   else if (a === "src") { S.ctx.source = b.dataset.v; lsSet("ctx", S.ctx); renderCtx(); }
   else if (a === "openCam") openCam();
   else if (a === "diag") runDiag();
+  else if (a === "shareDiag") runShareDiag();
+  else if (a === "shareCopy") { try { await navigator.clipboard.writeText($("#shareOut").textContent); toast("복사했습니다."); } catch (e) { toast("복사하지 못했습니다. 화면을 캡처해 주세요."); } }
   else if (a === "camRot") { lsSet("camRot", b.dataset.v); renderSet(); }
   else if (a === "sensor") runSensor();
   else if (a === "diagCopy") { try { await navigator.clipboard.writeText($("#diagOut").textContent); toast("복사했습니다."); } catch (e) { toast("복사하지 못했습니다. 화면을 캡처해 주세요."); } }
